@@ -1,5 +1,7 @@
-use clap::Parser;
+use ar_row::Timestamp;
+use ar_row_derive::ArRowDeserialize;
 use chashmap::CHashMap;
+use clap::Parser;
 use std::collections::HashSet;
 
 #[derive(Parser)]
@@ -18,6 +20,19 @@ pub struct Options {
     pub chunk: usize,
     // Wether we include removed branch or not,
     pub removed_branch: bool,
+}
+
+#[derive(ArRowDeserialize, Clone, Default, Debug, PartialEq, Eq)]
+pub struct Revision {
+    pub id: String,
+    pub message: Box<[u8]>,
+    pub author: Box<[u8]>,
+    pub date: Timestamp,
+    pub date_offset: i16,
+    pub committer: Box<[u8]>,
+    pub committer_date: Timestamp,
+    pub committer_offset: i16,
+    pub directory: String,
 }
 
 pub type AllRevisions = CHashMap<String, HashSet<(String, i64, i16)>>;
