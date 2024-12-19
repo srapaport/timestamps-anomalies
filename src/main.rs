@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 fn main() {
     let opts = timestamps_anomalies::env::Options {
         // Directory containing the orc files
@@ -16,5 +18,7 @@ fn main() {
         // Wether we include removed branch or not,
         removed_branch: false,
     };
-    timestamps_anomalies::retrieve_revision_timezones(&opts);
+    let start = Instant::now();
+    timestamps_anomalies::filter_timezone(&opts);
+    println!("time elapsed: {:.2?}", start.elapsed());
 }

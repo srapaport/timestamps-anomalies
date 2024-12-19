@@ -1794,11 +1794,13 @@ dependencies = [
  "bincode",
  "chashmap",
  "clap",
+ "csv",
  "indicatif",
  "log",
  "orc-rust",
  "rayon",
  "rocksdb",
+ "serde",
 ]
 
 [[package]]
