@@ -3,6 +3,7 @@ use ar_row_derive::ArRowDeserialize;
 use chashmap::CHashMap;
 use clap::Parser;
 use std::collections::HashSet;
+use serde::{Deserialize, Serialize};
 
 #[derive(Parser)]
 pub struct Options {
@@ -34,5 +35,17 @@ pub struct Revision {
     pub committer_offset: i16,
     pub directory: String,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AuthorCommit {
+    pub author: String,
+    pub commit_id: String,
+    pub timestamp_utc0: i64,
+    pub timezone: i16,
+}
+
+// pub struct Date_TZ {
+//     pub 
+// }
 
 pub type AllRevisions = CHashMap<String, HashSet<(String, i64, i16)>>;
