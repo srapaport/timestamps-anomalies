@@ -3,27 +3,27 @@ from datetime import datetime, timedelta
 import pickle
 
 def working_hours_inconsistency(commits):
-    suspicious_patterns = defaultdict(list)
+    suspicious_patterns = []
     working_hours = range(9, 18)  # 9 AM to 6 PM
     
     # Group commits by timezone
     timezone_commits = defaultdict(list)
     for commit in commits:
-        tz = commit['timezone']
+        tz = commit[2]
         timezone_commits[tz].append(commit)
     
     for tz, tz_commits in timezone_commits.items():
-        tz_offset = int(tz[:3])  # Extract hour offset
+        tz_offset_hour = commit[2]//60# Extract hour offset
         
         # Count commits by hour
         hour_distribution = defaultdict(int)
         for commit in tz_commits:
-            local_hour = (commit['timestamp'].hour + tz_offset) % 24
+            local_hour = (commit[1].hour + tz_offset_hour) % 24
             hour_distribution[local_hour] += 1
         
         total_commits = len(tz_commits)
-        # if total_commits < 5:  # Skip if too few commits
-        #     continue
+        if total_commits < 5:  # Skip if too few commits ARBITRARY
+            continue
             
         # Calculate percentage of commits outside working hours
         outside_hours_commits = sum(
@@ -32,9 +32,9 @@ def working_hours_inconsistency(commits):
         )
         outside_ratio = outside_hours_commits / total_commits
         
-        # Flag if more than 40% of commits are outside working hours
+        # Flag if more than 40% of commits are outside working hours ARBITRARY
         if outside_ratio > 0.4:
-            suspicious_patterns['high_outside_hours'].append({
+            suspicious_patterns.append({
                 'timezone': tz,
                 'outside_ratio': round(outside_ratio, 2),
                 'total_commits': total_commits
@@ -42,10 +42,10 @@ def working_hours_inconsistency(commits):
     return suspicious_patterns
             
 def weekend_hours_inconsistency(commits):
-    suspicious_patterns = defaultdict(list)
+    suspicious_patterns = []
     timezone_commits = defaultdict(list)
     for commit in commits:
-        tz = commit['timezone']
+        tz = commit[2]
         timezone_commits[tz].append(commit)
     
     for tz, tz_commits in timezone_commits.items():
@@ -53,68 +53,64 @@ def weekend_hours_inconsistency(commits):
 
         weekend_commits = sum(
             1 for commit in tz_commits
-            if commit['timestamp'].weekday() >= 5  # 5=Saturday, 6=Sunday
+            if commit[1].weekday() >= 5  # 5=Saturday, 6=Sunday
         )
         weekend_ratio = weekend_commits / total_commits
         
-        # Flag if more than 30% of commits are on weekends
+        # Flag if more than 30% of commits are on weekends ARBITRARY
         if weekend_ratio > 0.3:
-            suspicious_patterns['high_weekend_activity'].append({
+            suspicious_patterns.append({
                 'timezone': tz,
                 'weekend_ratio': round(weekend_ratio, 2),
                 'total_commits': total_commits
             })
     return suspicious_patterns
-            
+    
 def get_commit_session(commit_time, tz_offset):
     """Categorize time into morning/afternoon/evening/night"""
     local_hour = (commit_time.hour + tz_offset) % 24
     if 5 <= local_hour < 12:
         return 'morning'
-    elif 12 <= local_hour < 17:
+    elif 12 <= local_hour < 18:
         return 'afternoon'
-    elif 17 <= local_hour < 22:
+    elif 18 <= local_hour < 22:
         return 'evening'
     else:
         return 'night'
     
 def schedule_insconsistency(commits):
-    suspicious_patterns = defaultdict(list)
+    suspicious_patterns = []
     timezone_commits = defaultdict(list)
     for commit in commits:
-        tz = commit['timezone']
+        tz = commit[2]
         timezone_commits[tz].append(commit)
     
     for tz, tz_commits in timezone_commits.items():  
-        tz_offset = int(tz[:3])      
+        tz_offset_hour = commit[2]//60 
         # Track consecutive sessions
         commits_by_date = defaultdict(list)
-        for commit in sorted(tz_commits, key=lambda x: x['timestamp']):
-            date = commit['timestamp'].date()
-            session = get_commit_session(commit['timestamp'], tz_offset)
+        for commit in sorted(tz_commits, key=lambda x: x[1]):
+            date = commit[1].date()
+            session = get_commit_session(commit[1], tz_offset_hour)
             commits_by_date[date].append(session)
         
         # Look for inconsistent patterns
         for date, sessions in commits_by_date.items():
-            if len(sessions) < 3:
-                continue
-                
-            # Flag if commits span across too many different sessions
-            unique_sessions = len(set(sessions))
-            if unique_sessions >= 3:
-                suspicious_patterns['inconsistent_schedule'].append({
+            # Flag if commits span across too many different sessions ARBITRARY
+            if len(set(sessions)) >= 3:
+                suspicious_patterns.append({
                     'timezone': tz,
                     'date': date,
-                    'sessions': unique_sessions,
+                    'sessions': set(sessions),
                     'commit_count': len(sessions)
                 })
     return suspicious_patterns
 
 def activites_inconsistency(commits):
-    suspicious_patterns = defaultdict(list)
+    suspicious_patterns = []
     timezone_commits = defaultdict(list)
     for commit in commits:
-        tz = commit['timezone']
+        tz = commit[2]
         timezone_commits[tz].append(commit)
     if len(timezone_commits) >= 2:
         commits_per_tz = {
@@ -128,10 +124,10 @@ def activites_inconsistency(commits):
             if tz == max_commits_tz[0]:
                 continue
                 
-            # Flag if a non-dominant timezone has >25% of commits
+            # Flag if a non-dominant timezone has >25% of commits ARBITRARY
             ratio_to_dominant = count / max_commits_tz[1]
             if ratio_to_dominant > 0.25:
-                suspicious_patterns['multiple_active_timezones'].append({
+                suspicious_patterns.append({
                     'timezone': tz,
                     'dominant_timezone': max_commits_tz[0],
                     'commit_ratio': round(ratio_to_dominant, 2),
@@ -152,3 +148,5 @@ if __name__ == "__main__":
     db = {}
     with open('notebook/db.pkl', 'rb') as f:
         db = pickle.load(f)
+    for aut in db:
+        db[aut] = sorted(db[aut], key=lambda val: val[1])
