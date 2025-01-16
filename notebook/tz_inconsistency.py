@@ -136,7 +136,34 @@ def activites_inconsistency(commits):
     return suspicious_patterns
 
 def aba_pattern(commits):
-    pass
+    suspicious_patterns = []
+    commits = sorted(commits, key=lambda commit: commit[1])
+    commitA = None
+    commitB = None
+    
+    for commit in commits:
+        current_tz = commit[2]
+        if commitA == None:
+            commitA = commit
+            continue
+        
+        if commitB == None and current_tz != commitA[2]:
+            commitB = commit
+            continue
+        
+        if commitB != None and current_tz == commitA[2]:
+            suspicious_patterns.append({
+                'dates': (commitA[1], commitB[1], commit[1]),
+                'timezones': (commitA[2], commitB[2], current_tz),
+                'commit hash': (commitA[0], commitB[0], commit[0])
+            })
+            commitA = commitB
+            commitB = commit
+            continue
+        commitA = commit
+        commitB = None
+
+    return suspicious_patterns
 
 def travel_time(commits):
     pass
