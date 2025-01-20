@@ -11,12 +11,12 @@ use std::time::Instant;
 
 use log::{debug, info};
 
-pub fn load_revisions_from_orc(orc_dir: &str) -> env::AllRevisions {
+pub fn load_revisions_from_orc(opts: &env::Options) -> env::AllRevisions {
     let start = Instant::now();
 
     let all_revisions = env::AllRevisions::default();
 
-    let files = std::fs::read_dir(orc_dir)
+    let files = std::fs::read_dir(&opts.orc_dir)
         .unwrap()
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
@@ -66,38 +66,58 @@ pub fn load_revisions_from_orc(orc_dir: &str) -> env::AllRevisions {
             let batch = batch.unwrap();
             for revision in <env::Revision>::from_record_batch(batch).unwrap() {
                 let current_id = revision.id;
-                let current_author = String::from_utf8_lossy(&revision.author).to_string();
+                let current_author: String = revision
+                    .author
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect();
                 let current_date = revision.date;
                 let current_date_offset = revision.date_offset;
-                let current_committer = String::from_utf8_lossy(&revision.committer).to_string();
+                let current_committer: String = revision
+                    .committer
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect();
                 let current_committer_date = revision.committer_date;
                 let current_committer_offset = revision.committer_offset;
-
-                let current_date_offset_minutes: i64 = (current_date_offset * 60).into();
-                let current_date_utc0 = current_date.seconds - current_date_offset_minutes;
+                /////////////////// TEST
+                /* if current_id == "fe82c46327effc124ff166e1fa1e611579e1176b".to_string(){
+                    println!("{}",current_author);
+                    println!("{:?}",DateTime::from_timestamp(current_date.seconds, current_date.nanoseconds.try_into().unwrap()));
+                    println!("seconds: {}, nanoseconds: {}", current_date.seconds, current_date.nanoseconds);
+                    println!("{}",current_date_offset);
+                    println!("{}",current_committer);
+                    println!("{:?}",DateTime::from_timestamp(current_committer_date.seconds, current_committer_date.nanoseconds.try_into().unwrap()));
+                    println!("seconds: {}, nanoseconds: {}", current_committer_date.seconds, current_committer_date.nanoseconds);
+                    println!("{}",current_committer_offset);
+                } */
+                /////////////////// TEST
+                // let current_date_offset_minutes: i64 = (current_date_offset * 60).into();
+                //let current_date_utc0: DateTime<Utc> = DateTime::from_timestamp(current_date.seconds - current_date_offset_minutes, 0).unwrap();
+                //let current_date_utc0 = current_date.seconds - current_date_offset_minutes;
                 all_revisions.upsert(
                     current_author.clone(),
                     || {
                         let mut h = HashSet::new();
-                        h.insert((current_id.clone(), current_date_utc0, current_date_offset));
+                        h.insert((current_id.clone(), current_date.seconds, current_date_offset));
                         h
                     },
                     |v| {
-                        v.insert((current_id.clone(), current_date_utc0, current_date_offset));
+                        v.insert((current_id.clone(), current_date.seconds, current_date_offset));
                     },
                 );
                 if current_author != current_committer {
-                    let current_committer_offset_minutes: i64 =
-                        (current_committer_offset * 60).into();
-                    let current_committer_date_utc0 =
-                        current_committer_date.seconds - current_committer_offset_minutes;
+                    // let current_committer_offset_minutes: i64 = (current_committer_offset * 60).into();
+                    /* let current_committer_date_utc0: DateTime<Utc> =
+                        DateTime::from_timestamp(current_committer_date.seconds - current_committer_offset_minutes, 0); */
+                    // let current_committer_date_utc0= current_committer_date.seconds - current_committer_offset_minutes;
                     all_revisions.upsert(
                         current_committer,
                         || {
                             let mut h = HashSet::new();
                             h.insert((
                                 current_id.clone(),
-                                current_committer_date_utc0,
+                                current_committer_date.seconds,
                                 current_committer_offset,
                             ));
                             h
@@ -105,7 +125,7 @@ pub fn load_revisions_from_orc(orc_dir: &str) -> env::AllRevisions {
                         |v| {
                             v.insert((
                                 current_id.clone(),
-                                current_committer_date_utc0,
+                                current_committer_date.seconds,
                                 current_committer_offset,
                             ));
                         },
