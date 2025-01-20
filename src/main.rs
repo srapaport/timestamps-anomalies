@@ -18,7 +18,24 @@ fn main() {
         // Wether we include removed branch or not,
         removed_branch: false,
     };
+    // timestamps_anomalies::retrieve_revision_timezones(&opts);
     let start = Instant::now();
-    timestamps_anomalies::filter_timezone(&opts);
+    timestamps_anomalies::window_tz_inconsistency(&opts);
+
+    /* let author = String::from("08bc61697d00da1f6582634608026cd4e0d372486331189fbb9c8d33ab2486f4");
+    println!("windows for author {}", author);
+    match timestamps_anomalies::utils::single_author_window_res(&opts, author) {
+        Some(windows) => {
+            let mut amount_of_window = 0;
+            for window in windows {
+                amount_of_window += 1;
+                println!("window: {}", amount_of_window);
+                window.into_iter().for_each(|date|{
+                    println!("{}, {:?}, {:?}, {}", date.0, date.1.date_naive(), date.1.time(), date.2);
+                });
+            }
+        }
+        None => println!("no window"),
+    } */
     println!("time elapsed: {:.2?}", start.elapsed());
 }
