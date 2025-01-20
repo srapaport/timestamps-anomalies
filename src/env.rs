@@ -2,8 +2,8 @@ use ar_row::Timestamp;
 use ar_row_derive::ArRowDeserialize;
 use chashmap::CHashMap;
 use clap::Parser;
-use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 #[derive(Parser)]
 pub struct Options {
@@ -45,7 +45,11 @@ pub struct AuthorCommit {
 }
 
 // pub struct Date_TZ {
-//     pub 
+//     pub
 // }
 
 pub type AllRevisions = CHashMap<String, HashSet<(String, i64, i16)>>;
+
+pub const ONE_DAY: i64 = 24 * 60 * 60;
+pub const ONE_WEEK: i64 = 7 * 24 * 60 * 60;
+pub const AMOUNT_AUHTOR_2021: u64 = 135_801;
