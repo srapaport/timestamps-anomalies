@@ -4,3 +4,4 @@
 # teaser db for tests
 rocksdb_timezones_2021/*
 **/__pycache__/*
+results/*
