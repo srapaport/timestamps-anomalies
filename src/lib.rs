@@ -45,9 +45,14 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
                 match result {
                     Ok((key, value)) => {
                         let author = String::from_utf8_lossy(&key).to_string();
-                        let commits: HashSet<(String, i64, i16)> =
+                        let commits: Vec<(String, i64, i16)> =
                             bincode::deserialize(&value[..]).unwrap();
-                        if commits.len() <= 250_000 {
+                        if commits.len() == 262218 {
+                            
+                            if commits.len()>250000{
+                                println!("{}", commits.len());
+                            }
+                            
                             //call window_tz_inconsistency_extraction for each author
                             // bar.set_message(format!("checking inconsistency for author {:?}", author));
                             thread.spawn({

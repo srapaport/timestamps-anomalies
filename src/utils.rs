@@ -20,7 +20,7 @@ pub fn amount_of_commits(opts: &env::Options, author: String) -> usize {
     }
 }
 
-pub fn single_author_window_res(
+/* pub fn single_author_window_res(
     opts: &env::Options,
     author: String,
 ) -> Option<Vec<Vec<(String, DateTime<Utc>, i16)>>> {
@@ -43,4 +43,4 @@ pub fn single_author_window_res(
         },
         Err(_) => return None,
     }
-}
+} */

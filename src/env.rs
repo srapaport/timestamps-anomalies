@@ -48,7 +48,7 @@ pub struct AuthorCommit {
 //     pub
 // }
 
-pub type AllRevisions = CHashMap<String, HashSet<(String, i64, i16)>>;
+pub type AllRevisions = CHashMap<String, Vec<(String, i64, i16)>>;
 
 pub const ONE_DAY: i64 = 24 * 60 * 60;
 pub const ONE_WEEK: i64 = 7 * 24 * 60 * 60;

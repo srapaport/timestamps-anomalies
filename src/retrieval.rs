@@ -98,12 +98,10 @@ pub fn load_revisions_from_orc(opts: &env::Options) -> env::AllRevisions {
                 all_revisions.upsert(
                     current_author.clone(),
                     || {
-                        let mut h = HashSet::new();
-                        h.insert((current_id.clone(), current_date.seconds, current_date_offset));
-                        h
+                        vec![(current_id.clone(), current_date.seconds, current_date_offset)]
                     },
                     |v| {
-                        v.insert((current_id.clone(), current_date.seconds, current_date_offset));
+                        v.push((current_id.clone(), current_date.seconds, current_date_offset));
                     },
                 );
                 if current_author != current_committer {
@@ -114,16 +112,14 @@ pub fn load_revisions_from_orc(opts: &env::Options) -> env::AllRevisions {
                     all_revisions.upsert(
                         current_committer,
                         || {
-                            let mut h = HashSet::new();
-                            h.insert((
+                            vec![(
                                 current_id.clone(),
                                 current_committer_date.seconds,
                                 current_committer_offset,
-                            ));
-                            h
+                            )]
                         },
                         |v| {
-                            v.insert((
+                            v.push((
                                 current_id.clone(),
                                 current_committer_date.seconds,
                                 current_committer_offset,
