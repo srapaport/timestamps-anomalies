@@ -23,8 +23,6 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
     let db = DB::open(&options, opts.output_dir.as_str()).unwrap();
     let mut amount_of_err = 0;
     let mut amount_window_tz_inconsistency = AtomicUsize::new(0);
-    let mut amount_10_000 = 0;
-    let mut authors_skipped = vec![];
     // let mut author_window_tz_inconsistency = vec![];
     let multi_bar = MultiProgress::new();
     let bar = multi_bar.add(ProgressBar::new(env::AMOUNT_AUHTOR_2021));
@@ -47,12 +45,6 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
                         let author = String::from_utf8_lossy(&key).to_string();
                         let commits: Vec<(String, i64, i16)> =
                             bincode::deserialize(&value[..]).unwrap();
-                        if commits.len() == 262218 {
-                            
-                            if commits.len()>250000{
-                                println!("{}", commits.len());
-                            }
-                            
                             //call window_tz_inconsistency_extraction for each author
                             // bar.set_message(format!("checking inconsistency for author {:?}", author));
                             thread.spawn({
@@ -71,10 +63,7 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
                                 }
                                 
                             });
-                        } else {
-                            authors_skipped.push((author, commits.len()));
-                            amount_10_000 += 1;
-                        }
+                        
                         bar.inc(1);
                     }
                     Err(_) => {
@@ -95,8 +84,6 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
         "Ratio of author changing timezones at least 2 times in a given window: {:.2}%",
         (*amount_window_tz_inconsistency.get_mut() as f64 / env::AMOUNT_AUHTOR_2021 as f64) * 100.0
     );
-    println!("Amount of author skipped: {}", amount_10_000);
-    println!("Authors skipped: {:?}", authors_skipped);
     println!("Amount of err: {}", amount_of_err);
     /* author_window_tz_inconsistency.into_iter().for_each(|aut|{
         println!("{}", aut);

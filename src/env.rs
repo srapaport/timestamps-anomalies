@@ -50,6 +50,6 @@ pub struct AuthorCommit {
 
 pub type AllRevisions = CHashMap<String, Vec<(String, i64, i16)>>;
 
-pub const ONE_DAY: i64 = 24 * 60 * 60;
-pub const ONE_WEEK: i64 = 7 * 24 * 60 * 60;
+pub const ONE_DAY: u64 = 24 * 60 * 60;
+pub const ONE_WEEK: u64 = 7 * 24 * 60 * 60;
 pub const AMOUNT_AUHTOR_2021: u64 = 135_801;

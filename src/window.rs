@@ -1,10 +1,12 @@
-use chrono::{DateTime, Utc};
+use std::time::Duration;
+
+use chrono::{DateTime, TimeDelta, Timelike, Utc};
 // use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use itertools::Itertools;
 
 pub fn window_tz_inconsistency_extraction(
     mut commits: Vec<(String, i64, i16)>,
-    window_range: i64,
+    window_range: u64,
     // progress: &MultiProgress,
 ) -> Vec<Vec<(String, DateTime<Utc>, i16)>> {
     //sort commits
@@ -15,7 +17,6 @@ pub fn window_tz_inconsistency_extraction(
     }).collect();
 
     let mut suspicious_pattern: Vec<Vec<(String, DateTime<Utc>, i16)>> = Vec::new();
-    let mut last_commit: Option<&(String, DateTime<Utc>, i16)> = None;
 
     // let bar = progress.add(ProgressBar::new(commits.len() as u64));
     // bar.set_style(
@@ -24,20 +25,25 @@ pub fn window_tz_inconsistency_extraction(
     //     )
     //     .unwrap(),
     // );
+    let mut min_time = None;
     for (i, first_commit) in commits.iter().enumerate() {
-        if i % 1000 == 0{
-            println!("{i}");
+        if min_time.is_some_and(|time| first_commit.1 < time){
+            continue;
         }
-        
+        let max_time = first_commit.1 + Duration::from_secs(window_range);
         let count = commits.iter().skip(i+1).take_while(|commit|{
-            (commit.1 - first_commit.1).num_seconds() <= window_range
+            commit.1 <= max_time
         }).count() + 1;
         if count > 2{
-            println!("count = {count}");
-            if Some(&commits[i+count-1]) != last_commit && commits[i..i+count].iter().map(|commit| commit.2).dedup().count() > 2{
+            if commits[i..i+count].iter().map(|commit| commit.2).dedup().count() > 2{
                 suspicious_pattern.push(commits[i..i+count].to_vec());
             }
-            last_commit = Some(&commits[i+count-1]);
+        }
+        if let Some(next_commit) = commits.get(i+count){
+            min_time = Some(next_commit.1 - Duration::from_secs(window_range));
+        }
+        else{
+            break;
         }
             
     }
