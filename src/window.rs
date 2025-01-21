@@ -26,14 +26,16 @@ pub fn window_tz_inconsistency_extraction(
     //     .unwrap(),
     // );
     let mut min_time = None;
+    let mut min_offset = 0;
     for (i, first_commit) in commits.iter().enumerate() {
         if min_time.is_some_and(|time| first_commit.1 < time){
+
             continue;
         }
         let max_time = first_commit.1 + Duration::from_secs(window_range);
-        let count = commits.iter().skip(i+1).take_while(|commit|{
+        let count = commits.iter().skip(usize::max(i+1, min_offset)).take_while(|commit|{
             commit.1 <= max_time
-        }).count() + 1;
+        }).count() + 1 + usize::max(min_offset, i+1) - (i + 1);
         if count > 2{
             if commits[i..i+count].iter().map(|commit| commit.2).dedup().count() > 2{
                 suspicious_pattern.push(commits[i..i+count].to_vec());
@@ -41,6 +43,7 @@ pub fn window_tz_inconsistency_extraction(
         }
         if let Some(next_commit) = commits.get(i+count){
             min_time = Some(next_commit.1 - Duration::from_secs(window_range));
+            min_offset = i+count;
         }
         else{
             break;
