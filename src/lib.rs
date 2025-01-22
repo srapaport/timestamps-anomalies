@@ -3,11 +3,11 @@ mod retrieval;
 pub mod utils;
 mod window;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use std::sync::atomic::Ordering;
-use std::{collections::HashSet, sync::atomic::AtomicUsize};
-use std::time::Instant;
-use rocksdb::{Options, DB};
 use rayon::ThreadPoolBuilder;
+use rocksdb::{Options, DB};
+use std::sync::atomic::Ordering;
+use std::time::Instant;
+use std::sync::atomic::AtomicUsize;
 
 use log::{info, warn};
 
@@ -27,43 +27,40 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
     let multi_bar = MultiProgress::new();
     let bar = multi_bar.add(ProgressBar::new(env::AMOUNT_AUHTOR_2021));
     bar.set_style(
-        ProgressStyle::with_template(
-            "{wide_bar} {pos} {percent_precise}% {elapsed_precise} {eta}",
-        )
-        .unwrap(),
+        ProgressStyle::with_template("{wide_bar} {pos} {percent_precise}% {elapsed_precise} {eta}")
+            .unwrap(),
     );
     let workers = (num_cpus::get() / 3) * 2;
     let pool = ThreadPoolBuilder::new()
         .num_threads(workers)
         .build()
         .unwrap();
-    pool.install(||{
-        rayon::scope(|thread|{
+    pool.install(|| {
+        rayon::scope(|thread| {
             for result in db.iterator(rocksdb::IteratorMode::Start) {
                 match result {
                     Ok((key, value)) => {
-                        let author = String::from_utf8_lossy(&key).to_string();
+                        let _author = String::from_utf8_lossy(&key).to_string();
                         let commits: Vec<(String, i64, i16)> =
                             bincode::deserialize(&value[..]).unwrap();
-                            //call window_tz_inconsistency_extraction for each author
-                            // bar.set_message(format!("checking inconsistency for author {:?}", author));
-                            thread.spawn({
-                                let commits = commits.clone();
-                                let amount_window_tz_inconsistency = &amount_window_tz_inconsistency;
-                                move |_|{
-                                    let suspicious_pattern = window::window_tz_inconsistency_extraction(
-                                        commits,
-                                        env::ONE_DAY,
-                                        // &multi_bar,
-                                    );
-                                    if suspicious_pattern.len() > 0 {
-                                        amount_window_tz_inconsistency.fetch_add(1, Ordering::Relaxed);
-                                        // author_window_tz_inconsistency.push(author);
-                                    }
+                        //call window_tz_inconsistency_extraction for each author
+                        // bar.set_message(format!("checking inconsistency for author {:?}", author));
+                        thread.spawn({
+                            let commits = commits.clone();
+                            let amount_window_tz_inconsistency = &amount_window_tz_inconsistency;
+                            move |_| {
+                                let suspicious_pattern = window::window_tz_inconsistency_extraction(
+                                    commits,
+                                    env::ONE_DAY,
+                                    // &multi_bar,
+                                );
+                                if suspicious_pattern.len() > 0 {
+                                    amount_window_tz_inconsistency.fetch_add(1, Ordering::Relaxed);
+                                    // author_window_tz_inconsistency.push(author);
                                 }
-                                
-                            });
-                        
+                            }
+                        });
+
                         bar.inc(1);
                     }
                     Err(_) => {
@@ -75,7 +72,7 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
             }
         });
     });
-    
+
     println!(
         "Amount of author flagged: {}",
         amount_window_tz_inconsistency.get_mut()

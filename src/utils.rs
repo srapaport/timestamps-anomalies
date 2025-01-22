@@ -20,7 +20,7 @@ pub fn amount_of_commits(opts: &env::Options, author: String) -> usize {
     }
 }
 
-/* pub fn single_author_window_res(
+pub fn single_author_window_res(
     opts: &env::Options,
     author: String,
 ) -> Option<Vec<Vec<(String, DateTime<Utc>, i16)>>> {
@@ -29,7 +29,7 @@ pub fn amount_of_commits(opts: &env::Options, author: String) -> usize {
     match db.get(author) {
         Ok(val) => match val {
             Some(res) => {
-                let commits: HashSet<(String, i64, i16)> = bincode::deserialize(&res[..]).unwrap();
+                let commits: Vec<(String, i64, i16)> = bincode::deserialize(&res[..]).unwrap();
                 /* let commits: Vec<(String, DateTime<Utc>, i16)> = commits.into_iter().map(|commit|{
                     (commit.0, DateTime::from_timestamp(commit.1, 0).unwrap(), commit.2)
                 }).collect(); */
@@ -43,4 +43,4 @@ pub fn amount_of_commits(opts: &env::Options, author: String) -> usize {
         },
         Err(_) => return None,
     }
-} */
+}

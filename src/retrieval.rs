@@ -4,7 +4,6 @@ use indicatif::{ProgressBar, ProgressStyle};
 use orc_rust::projection::ProjectionMask;
 use orc_rust::ArrowReaderBuilder;
 use rayon::prelude::*;
-use std::collections::HashSet;
 use std::fs::File;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;

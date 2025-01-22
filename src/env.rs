@@ -3,7 +3,6 @@ use ar_row_derive::ArRowDeserialize;
 use chashmap::CHashMap;
 use clap::Parser;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 #[derive(Parser)]
 pub struct Options {
