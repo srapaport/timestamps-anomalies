@@ -4,18 +4,24 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ar_row = "1.1.0"
-ar_row_derive = "1.1.0"
+anyhow = "1.0.95"
+ar_row = "1.0.0"
+ar_row_derive = "1.0.0"
+arrow = "53.1.0"
+arrow-array = "53.1.0"
 bincode = "1.3.3"
 chashmap = "2.2.2"
 chrono = "0.4.39"
 clap = { version = "4.5.23", features = ["derive"] }
 csv = "1.3.1"
+flexi_logger = "0.29.8"
 indicatif = "0.17.9"
 itertools = "0.14.0"
 log = "0.4.22"
 num_cpus = "1.16.0"
-orc-rust = "0.5.0"
+orc-rust = { git = "https://github.com/progval/orc-rust.git", rev = "9d7d438cf41dea3457c3821d062163c369d6ef2a", default-features = false } # v0.5.0 which allows configuring time units + bug fixes, plus https://github.com/datafusion-contrib/orc-rust/pull/12 (relax arrow version) + https://github.com/datafusion-contrib/orc-rust/pull/36 (fix decoding timestamps) + https://github.com/datafusion-contrib/orc-rust/pull/13 (avoid unnecessary null buffers, needed by ar_row)
+rand = "0.9.0"
+# orc-rust = "0.5.0"
 rayon = "1.10.0"
 rocksdb = "0.22.0"
 serde = { version = "1.0.216", features = ["derive"] }

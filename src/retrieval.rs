@@ -5,10 +5,11 @@ use orc_rust::projection::ProjectionMask;
 use orc_rust::ArrowReaderBuilder;
 use rayon::prelude::*;
 use std::fs::File;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::Instant;
 
-use log::{debug, info};
+use log::{debug, error, info};
+// use tracing
 
 pub fn load_revisions_from_orc(opts: &env::Options) -> env::AllRevisions {
     let start = Instant::now();
@@ -21,8 +22,11 @@ pub fn load_revisions_from_orc(opts: &env::Options) -> env::AllRevisions {
         .unwrap();
 
     let amount_rev = AtomicU64::new(0);
-    // let bar = ProgressBar::new(3_500_228_278);
-    let bar = ProgressBar::new(5_973_059);
+    let amount_rev_retrieve = AtomicU64::new(0);
+    let amount_none_date = AtomicUsize::new(0);
+    let amount_none_committer_date = AtomicUsize::new(0);
+    let amount_overflow_date = AtomicUsize::new(0);
+    let bar = ProgressBar::new(opts.amount_revisions as u64);
     bar.set_style(
         ProgressStyle::with_template(
             "{wide_bar} {pos} {percent_precise}% {elapsed_precise} {duration_precise} {eta}",
@@ -59,7 +63,11 @@ pub fn load_revisions_from_orc(opts: &env::Options) -> env::AllRevisions {
                 "directory",
             ],
         );
-        let reader = builder.with_projection(projection).build();
+        let reader_builder = builder
+            .with_projection(projection.clone())
+            .with_batch_size(env::ORC_BATCH_SIZE);
+        let schema = env::transform_schema(&reader_builder.schema());
+        let reader = reader_builder.with_schema(schema).build();
         reader.for_each(|batch| {
             debug!("Entering reader");
             let batch = batch.unwrap();
@@ -79,68 +87,101 @@ pub fn load_revisions_from_orc(opts: &env::Options) -> env::AllRevisions {
                     .collect();
                 let current_committer_date = revision.committer_date;
                 let current_committer_offset = revision.committer_offset;
-                /////////////////// TEST
-                /* if current_id == "fe82c46327effc124ff166e1fa1e611579e1176b".to_string(){
-                    println!("{}",current_author);
-                    println!("{:?}",DateTime::from_timestamp(current_date.seconds, current_date.nanoseconds.try_into().unwrap()));
-                    println!("seconds: {}, nanoseconds: {}", current_date.seconds, current_date.nanoseconds);
-                    println!("{}",current_date_offset);
-                    println!("{}",current_committer);
-                    println!("{:?}",DateTime::from_timestamp(current_committer_date.seconds, current_committer_date.nanoseconds.try_into().unwrap()));
-                    println!("seconds: {}, nanoseconds: {}", current_committer_date.seconds, current_committer_date.nanoseconds);
-                    println!("{}",current_committer_offset);
-                } */
-                /////////////////// TEST
-                // let current_date_offset_minutes: i64 = (current_date_offset * 60).into();
-                //let current_date_utc0: DateTime<Utc> = DateTime::from_timestamp(current_date.seconds - current_date_offset_minutes, 0).unwrap();
-                //let current_date_utc0 = current_date.seconds - current_date_offset_minutes;
-                all_revisions.upsert(
-                    current_author.clone(),
-                    || {
-                        vec![(current_id.clone(), current_date.seconds, current_date_offset)]
-                    },
-                    |v| {
-                        v.push((current_id.clone(), current_date.seconds, current_date_offset));
-                    },
-                );
+
+                let mut valid = false;
+
+                if let Some(current_date) = current_date {
+                    if let Some(current_date_offset) = current_date_offset {
+                        all_revisions.upsert(
+                            current_author.clone(),
+                            || {
+                                vec![(
+                                    current_id.clone(),
+                                    current_date.seconds,
+                                    current_date_offset,
+                                )]
+                            },
+                            |v| {
+                                v.push((
+                                    current_id.clone(),
+                                    current_date.seconds,
+                                    current_date_offset,
+                                ));
+                            },
+                        );
+                        valid = true;
+                    } else {
+                        amount_none_date.fetch_add(1, Ordering::Relaxed);
+                    }
+                } else {
+                    amount_none_date.fetch_add(1, Ordering::Relaxed);
+                }
+
                 if current_author != current_committer {
-                    // let current_committer_offset_minutes: i64 = (current_committer_offset * 60).into();
-                    /* let current_committer_date_utc0: DateTime<Utc> =
-                        DateTime::from_timestamp(current_committer_date.seconds - current_committer_offset_minutes, 0); */
-                    // let current_committer_date_utc0= current_committer_date.seconds - current_committer_offset_minutes;
-                    all_revisions.upsert(
-                        current_committer,
-                        || {
-                            vec![(
-                                current_id.clone(),
-                                current_committer_date.seconds,
-                                current_committer_offset,
-                            )]
-                        },
-                        |v| {
-                            v.push((
-                                current_id.clone(),
-                                current_committer_date.seconds,
-                                current_committer_offset,
-                            ));
-                        },
-                    );
+                    if let Some(current_committer_date) = current_committer_date {
+                        if let Some(current_committer_offset) = current_committer_offset {
+                            all_revisions.upsert(
+                                current_committer,
+                                || {
+                                    vec![(
+                                        current_id.clone(),
+                                        current_committer_date.seconds,
+                                        current_committer_offset,
+                                    )]
+                                },
+                                |v| {
+                                    v.push((
+                                        current_id.clone(),
+                                        current_committer_date.seconds,
+                                        current_committer_offset,
+                                    ));
+                                },
+                            );
+                            valid = true;
+                        } else {
+                            amount_none_committer_date.fetch_add(1, Ordering::Relaxed);
+                        }
+                    } else {
+                        amount_none_committer_date.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+                if valid {
+                    amount_rev_retrieve.fetch_add(1, Ordering::Relaxed);
                 }
                 amount_rev.fetch_add(1, Ordering::Relaxed);
                 bar.set_position(amount_rev.load(Ordering::Relaxed));
             }
         });
     });
-
-    // all_revisions.into_iter().for_each(|(k,v)|{
-    //     println!("Author: {:?}", k);
-    //     for elt in v{
-    //         println!("  rev id: {:?}", elt.0);
-    //         println!("  date: {:?}", elt.1);
-    //         println!("  offset: {:?}", elt.2);
-    //     }
-    // });
+    bar.finish_and_clear();
+    println!(
+        "amount of err date: {}",
+        amount_none_date.load(Ordering::Relaxed)
+    );
+    println!(
+        "amount of err committer date: {}",
+        amount_none_committer_date.load(Ordering::Relaxed)
+    );
+    println!(
+        "amount of err batch: {}",
+        amount_overflow_date.load(Ordering::Relaxed)
+    );
+    println!(
+        "amount of rev read: {}",
+        amount_rev_retrieve.load(Ordering::Relaxed)
+    );
     println!("loading time: {:.2?}", start.elapsed());
+
+    // Retrieve both authors
+    let big_authors = vec![
+        String::from("eba34ad04fb96d1226911b5a7bce820126f1cbd9da09a187ccf16bcf6990d893"),
+        String::from("42fcc3ed5b24c4780bbcecb719d07dcef72a5881fdb8cdf8ee334b412f107c5b"),
+    ];
+    for author in big_authors {
+        let commits = (*all_revisions.get(&author).unwrap()).clone();
+        println!("author: {} | amount of rev: {} | first commit retrieved: {:?} | last commit retrieved: {:?}", author, commits.len(), commits.get(0), commits.last().unwrap());
+    }
+
     all_revisions
 }
 
@@ -153,13 +194,35 @@ pub fn save_db(all_revisions: env::AllRevisions, opts: &env::Options) {
     let db = rocksdb::DB::open(&options, &opts.output_dir).unwrap();
     let bar = ProgressBar::new(all_revisions.len() as u64);
     bar.set_style(ProgressStyle::with_template("{wide_bar} {eta}").unwrap());
+    let mut amount_of_err_serialize = 0;
+    let mut amount_of_err_put = 0;
+    let mut amount_of_author_put = 0;
     for (author, dates) in all_revisions {
         // let dates = dates.into_inner().unwrap(); // todo if date is a mutex
-        db.put(author, bincode::serialize(&dates).unwrap()).unwrap();
+        match bincode::serialize(&dates) {
+            Ok(value)=>{
+                match db.put(author.clone(), value) {
+                    Err(err) => {
+                        amount_of_err_put += 1;
+                        error!("couldn't insert the value for author {author}. Error: {err}");
+                    }
+                    Ok(_) => {
+                        amount_of_author_put += 1;
+                    }
+                }
+            },
+            Err(err)=>{
+                amount_of_err_serialize += 1;
+                error!("couldn't serialize the value for author {author}. Error: {err}");
+            }
+        }
         // Do not deallocate the hashmap and vectors
         std::mem::forget(dates);
         bar.inc(1);
     }
     bar.finish_and_clear();
     println!("DB writing time: {:.2?}", start.elapsed());
+    println!("amount_of_author_put = {}", amount_of_author_put);
+    println!("amount_of_err_serialize = {}", amount_of_err_serialize);
+    println!("amount_of_err_put = {}", amount_of_err_put);
 }
