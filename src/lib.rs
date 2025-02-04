@@ -21,7 +21,12 @@ pub fn retrieve_revision_timezones(opts: &env::Options) {
 }
 
 pub fn window_tz_inconsistency(opts: &env::Options) {
-
+    let current_cp: Vec<String>;
+    let results_path = opts.results.clone();
+    match window::load_checkpoint(&results_path){
+        Some(cp) => current_cp = cp,
+        None => current_cp = Vec::new(),
+    }
     let (tx, rx) = channel::<
         Option<(
             String,
@@ -29,7 +34,9 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
         )>,
     >();
     let path_db = opts.output_dir.clone();
+    let amount_author_db = opts.amount_authors;
     let jh = thread::spawn(move||{
+        let current_cp = &current_cp;
         //open rocksdb
         let options = Options::default();
         let db = DB::open(&options, &path_db).unwrap();
@@ -37,7 +44,7 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
         let mut amount_window_tz_inconsistency = AtomicUsize::new(0);
         // let mut author_window_tz_inconsistency = vec![];
         let multi_bar = MultiProgress::new();
-        let bar = multi_bar.add(ProgressBar::new(env::AMOUNT_AUHTOR_2021));
+        let bar = multi_bar.add(ProgressBar::new(amount_author_db));
         bar.set_style(
             ProgressStyle::with_template("{wide_bar} {pos} {percent_precise}% {elapsed_precise} {eta}")
                 .unwrap(),
@@ -54,6 +61,10 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
                     match result {
                         Ok((key, value)) => {
                             let author = String::from_utf8_lossy(&key).to_string();
+                            if current_cp.contains(&author){
+                                bar.inc(1);
+                                continue;
+                            }
                             let commits: Vec<(String, i64, i16)> =
                                 bincode::deserialize(&value[..]).unwrap();
                             //call window_tz_inconsistency_extraction for each author
@@ -91,25 +102,27 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
                 }
             });
         });
+        write_error_time(results_path).expect("couldn't flush error messages");
         println!(
             "Amount of author flagged: {}",
             amount_window_tz_inconsistency.get_mut()
         );
         println!(
             "Ratio of author changing timezones at least 2 times in a given window: {:.2}%",
-            (*amount_window_tz_inconsistency.get_mut() as f64 / env::AMOUNT_AUHTOR_2021 as f64) * 100.0
+            (*amount_window_tz_inconsistency.get_mut() as f64 / amount_author_db as f64) * 100.0
         );
-        println!("Amount of err: {}", amount_of_err);
+        println!("Amount of RocksDB err: {}", amount_of_err);
+        println!("Amount of datetime err: {}", env::ERROR_DATETIME.lock().unwrap().len());
         bar.finish_with_message("Finish checking all authors");
     });
     
     let mut res: Vec<(String, Vec<((usize, DateTime<Utc>), (usize, DateTime<Utc>), Vec<i16>)>)> = Vec::new(); 
     let mut cp: Vec<String> = Vec::new();
-    for _ in 0..env::AUTHOR_DB_2024{
+    for _ in 0..opts.amount_authors{
         if let Some(package) = rx.recv().expect("Couldn't receive package"){
             if res.len() > opts.chunk {
-                window::flush_res(&opts.output_dir, &mut res);
-                window::create_cp(&opts.output_dir, &mut cp);
+                window::flush_res(&opts.results, &mut res);
+                window::create_cp(&opts.results, &mut cp);
             }
             cp.push(package.0.clone());
             if package.1.len() > 0{
@@ -118,11 +131,18 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
         } 
     }
     if res.len() > 0 {
-        window::flush_res(&opts.output_dir, &mut res);
+        window::flush_res(&opts.results, &mut res);
     }
     if cp.len() > 0 {
-        window::create_cp(&opts.output_dir, &mut cp);
+        window::create_cp(&opts.results, &mut cp);
     }
 
     jh.join().unwrap();
+}
+
+pub fn write_error_time(results: String) -> std::io::Result<()> {
+    let error_times = env::ERROR_DATETIME.lock().unwrap();
+    let path = format!("{}/error_time.json", results);
+    std::fs::write(path, serde_json::to_string(&*error_times).unwrap())?;
+    Ok(())
 }

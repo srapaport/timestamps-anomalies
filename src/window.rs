@@ -1,9 +1,11 @@
-use std::{fs::{self, File}, io::Write, time::Duration};
+use std::{fs::{self, File}, io::{BufRead, BufReader, Write}, time::Duration};
 
 use chrono::{DateTime, Utc};
 // use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use log::warn;
+use log::{warn, info, error};
+
+use crate::env;
 
 ///    [
 ///        ((i, tsi), (j, tsj), [tz1, tz2, ...]),
@@ -18,12 +20,23 @@ pub fn window_tz_inconsistency_extraction(
     commits.sort_unstable_by_key(|&(_, timestamp, _)| timestamp);
     let commits: Vec<(String, DateTime<Utc>, i16)> = commits
         .into_iter()
-        .map(|commit| {
-            (
-                commit.0,
-                DateTime::from_timestamp(commit.1, 0).unwrap(),
+        .filter_map(|commit: (String, i64, i16)| {
+            Some((
+                commit.0.clone(),
+                match DateTime::from_timestamp(commit.1, 0){
+                    Some(dt)=>dt,
+                    None => {
+                        error!("couldn't convert the following timestamp in DateTime: {}, from commit {}", commit.1, commit.0);
+                        if let Ok(mut guard) = env::ERROR_DATETIME.lock() {
+                            guard.push((commit.0, commit.1));
+                        } else {
+                            error!("Failed to acquire lock for ERROR_DATETIME");
+                        }
+                        return None;
+                    },
+                },
                 commit.2,
-            )
+            ))
         })
         .collect();
 
@@ -63,7 +76,7 @@ pub fn window_tz_inconsistency_extraction(
                 //suspicious_pattern.push(commits[i..i + count].to_vec());
                 suspicious_pattern.push((
                     (i, commits[i].1),
-                    (i + count, commits[i + count].1),
+                    (i + count, commits[i + count-1].1),
                     timezone_seq,
                 ));
             }
@@ -104,7 +117,7 @@ pub fn flush_res(path_res: &str, res: &mut Vec<(String, Vec<((usize, DateTime<Ut
             .write(format!("{}:[ ", author).as_bytes())
             .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
         commits.iter().for_each(|commit|{
-            file_w.write(format!("({}, {} -> {}, {} tzs: {:?}) ", commit.0.0, commit.0.1.timestamp(), commit.1.0, commit.1.1.timestamp(), commit.2).as_bytes())
+            file_w.write(format!("({}, {}, {}, {}, {:?}) ", commit.0.0, commit.0.1.timestamp(), commit.1.0, commit.1.1.timestamp(), commit.2).as_bytes())
                 .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
         });
         file_w
@@ -117,13 +130,7 @@ pub fn flush_res(path_res: &str, res: &mut Vec<(String, Vec<((usize, DateTime<Ut
 }
 
 pub fn create_cp(path_res: &str, cp: &mut Vec<String>){
-
-    cp.clear();
-}
-
-// creates a new checkpoint in the file checkpoints
-/* fn create_cp(prefix: &str, cp: &mut HashSet<String>) {
-    let filename = format!("{}/checkpoints", prefix);
+    let filename = format!("{}/checkpoints", path_res);
     if let Err(_) = fs::metadata(&filename) {
         File::create_new(&filename)
             .expect(format!("lib.rs > create_cp | File {} already exists!", &filename).as_str());
@@ -132,10 +139,30 @@ pub fn create_cp(path_res: &str, cp: &mut Vec<String>){
         .append(true)
         .open(filename)
         .expect(format!("cannot open checkpoints file").as_str());
-    cp.iter().for_each(|ori| {
+    cp.iter().for_each(|author| {
         cp_file
-            .write(format!("{}\n", ori).as_bytes())
+            .write(format!("{}\n", author).as_bytes())
             .expect("couldn't write data in checkpoints");
     });
     cp.clear();
-} */
+}
+
+pub fn load_checkpoint(path_res: &str) -> Option<Vec<String>> {
+    let mut res = Vec::new();
+
+    if let Ok(cp_file) = File::open(format!("{}/checkpoints", path_res)) {
+        BufReader::new(cp_file)
+            .lines()
+            .into_iter()
+            .for_each(|line| {
+                if let Ok(author) = line {
+                    res.push(author);
+                }
+            });
+    } else {
+        info!("couldn't open checkpoints file");
+        return None;
+    }
+
+    return Some(res);
+}
