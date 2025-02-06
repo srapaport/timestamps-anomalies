@@ -200,18 +200,16 @@ pub fn save_db(all_revisions: env::AllRevisions, opts: &env::Options) {
     for (author, dates) in all_revisions {
         // let dates = dates.into_inner().unwrap(); // todo if date is a mutex
         match bincode::serialize(&dates) {
-            Ok(value)=>{
-                match db.put(author.clone(), value) {
-                    Err(err) => {
-                        amount_of_err_put += 1;
-                        error!("couldn't insert the value for author {author}. Error: {err}");
-                    }
-                    Ok(_) => {
-                        amount_of_author_put += 1;
-                    }
+            Ok(value) => match db.put(author.clone(), value) {
+                Err(err) => {
+                    amount_of_err_put += 1;
+                    error!("couldn't insert the value for author {author}. Error: {err}");
+                }
+                Ok(_) => {
+                    amount_of_author_put += 1;
                 }
             },
-            Err(err)=>{
+            Err(err) => {
                 amount_of_err_serialize += 1;
                 error!("couldn't serialize the value for author {author}. Error: {err}");
             }

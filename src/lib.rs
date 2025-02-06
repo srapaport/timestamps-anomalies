@@ -23,7 +23,7 @@ pub fn retrieve_revision_timezones(opts: &env::Options) {
 pub fn window_tz_inconsistency(opts: &env::Options) {
     let current_cp: Vec<String>;
     let results_path = opts.results.clone();
-    match window::load_checkpoint(&results_path){
+    match window::load_checkpoint(&results_path) {
         Some(cp) => current_cp = cp,
         None => current_cp = Vec::new(),
     }
@@ -35,7 +35,8 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
     >();
     let path_db = opts.output_dir.clone();
     let amount_author_db = opts.amount_authors;
-    let jh = thread::spawn(move||{
+    let window_range = opts.window_range;
+    let jh = thread::spawn(move || {
         let current_cp = &current_cp;
         //open rocksdb
         let options = Options::default();
@@ -46,8 +47,10 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
         let multi_bar = MultiProgress::new();
         let bar = multi_bar.add(ProgressBar::new(amount_author_db));
         bar.set_style(
-            ProgressStyle::with_template("{wide_bar} {pos} {percent_precise}% {elapsed_precise} {eta}")
-                .unwrap(),
+            ProgressStyle::with_template(
+                "{wide_bar} {pos} {percent_precise}% {elapsed_precise} {eta}",
+            )
+            .unwrap(),
         );
         let workers = (num_cpus::get() / 3) * 2;
         let pool = ThreadPoolBuilder::new()
@@ -61,7 +64,7 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
                     match result {
                         Ok((key, value)) => {
                             let author = String::from_utf8_lossy(&key).to_string();
-                            if current_cp.contains(&author){
+                            if current_cp.contains(&author) {
                                 bar.inc(1);
                                 continue;
                             }
@@ -71,16 +74,19 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
                             // bar.set_message(format!("checking inconsistency for author {:?}", author));
                             thread.spawn({
                                 let commits = commits.clone();
-                                let amount_window_tz_inconsistency = &amount_window_tz_inconsistency;
+                                let amount_window_tz_inconsistency =
+                                    &amount_window_tz_inconsistency;
                                 let tx = tx.clone();
                                 move |_| {
-                                    let suspicious_pattern = window::window_tz_inconsistency_extraction(
-                                        commits,
-                                        env::ONE_DAY,
-                                        // &multi_bar,
-                                    );
+                                    let suspicious_pattern =
+                                        window::window_tz_inconsistency_extraction(
+                                            commits,
+                                            window_range,
+                                            // &multi_bar,
+                                        );
                                     if suspicious_pattern.len() > 0 {
-                                        amount_window_tz_inconsistency.fetch_add(1, Ordering::Relaxed);
+                                        amount_window_tz_inconsistency
+                                            .fetch_add(1, Ordering::Relaxed);
                                     }
                                     tx.send(Some((author.clone(), suspicious_pattern))).expect(
                                         format!(
@@ -112,23 +118,29 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
             (*amount_window_tz_inconsistency.get_mut() as f64 / amount_author_db as f64) * 100.0
         );
         println!("Amount of RocksDB err: {}", amount_of_err);
-        println!("Amount of datetime err: {}", env::ERROR_DATETIME.lock().unwrap().len());
+        println!(
+            "Amount of datetime err: {}",
+            env::ERROR_DATETIME.lock().unwrap().len()
+        );
         bar.finish_with_message("Finish checking all authors");
     });
-    
-    let mut res: Vec<(String, Vec<((usize, DateTime<Utc>), (usize, DateTime<Utc>), Vec<i16>)>)> = Vec::new(); 
+
+    let mut res: Vec<(
+        String,
+        Vec<((usize, DateTime<Utc>), (usize, DateTime<Utc>), Vec<i16>)>,
+    )> = Vec::new();
     let mut cp: Vec<String> = Vec::new();
-    for _ in 0..opts.amount_authors{
-        if let Some(package) = rx.recv().expect("Couldn't receive package"){
+    for _ in 0..opts.amount_authors {
+        if let Some(package) = rx.recv().expect("Couldn't receive package") {
             if res.len() > opts.chunk {
                 window::flush_res(&opts.results, &mut res);
                 window::create_cp(&opts.results, &mut cp);
             }
             cp.push(package.0.clone());
-            if package.1.len() > 0{
+            if package.1.len() > 0 {
                 res.push(package);
             }
-        } 
+        }
     }
     if res.len() > 0 {
         window::flush_res(&opts.results, &mut res);

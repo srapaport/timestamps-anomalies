@@ -1,9 +1,13 @@
-use std::{fs::{self, File}, io::{BufRead, BufReader, Write}, time::Duration};
+use std::{
+    fs::{self, File},
+    io::{BufRead, BufReader, Write},
+    time::Duration,
+};
 
 use chrono::{DateTime, Utc};
 // use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use log::{warn, info, error};
+use log::{error, info, warn};
 
 use crate::env;
 
@@ -76,7 +80,7 @@ pub fn window_tz_inconsistency_extraction(
                 //suspicious_pattern.push(commits[i..i + count].to_vec());
                 suspicious_pattern.push((
                     (i, commits[i].1),
-                    (i + count, commits[i + count-1].1),
+                    (i + count, commits[i + count - 1].1),
                     timezone_seq,
                 ));
             }
@@ -95,15 +99,24 @@ pub fn window_tz_inconsistency_extraction(
     suspicious_pattern
 }
 
-pub fn flush_res(path_res: &str, res: &mut Vec<(String, Vec<((usize, DateTime<Utc>), (usize, DateTime<Utc>), Vec<i16>)>)>){
+pub fn flush_res(
+    path_res: &str,
+    res: &mut Vec<(
+        String,
+        Vec<((usize, DateTime<Utc>), (usize, DateTime<Utc>), Vec<i16>)>,
+    )>,
+) {
     let author = res.first().unwrap().0.clone();
     let filename = format!("{}/{}.res", path_res, author);
     let filename_tmp = format!("{}/{}.tmp", path_res, author);
-    if let Ok(_) = fs::metadata(&filename_tmp){
-        warn!("window.rs > flush_res | File {} already exists!", &filename_tmp);
+    if let Ok(_) = fs::metadata(&filename_tmp) {
+        warn!(
+            "window.rs > flush_res | File {} already exists!",
+            &filename_tmp
+        );
         return;
     }
-    if let Ok(_) = fs::metadata(&filename){
+    if let Ok(_) = fs::metadata(&filename) {
         warn!("window.rs > flush_res | File {} already exists!", &filename);
         return;
     }
@@ -111,13 +124,23 @@ pub fn flush_res(path_res: &str, res: &mut Vec<(String, Vec<((usize, DateTime<Ut
         warn!("File {} already exists!", filename_tmp);
         return;
     };
-    res.iter().for_each(|(author, commits)|{
-
+    res.iter().for_each(|(author, commits)| {
         file_w
             .write(format!("{}:[ ", author).as_bytes())
             .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
-        commits.iter().for_each(|commit|{
-            file_w.write(format!("({}, {}, {}, {}, {:?}) ", commit.0.0, commit.0.1.timestamp(), commit.1.0, commit.1.1.timestamp(), commit.2).as_bytes())
+        commits.iter().for_each(|commit| {
+            file_w
+                .write(
+                    format!(
+                        "({}, {}, {}, {}, {:?}) ",
+                        commit.0 .0,
+                        commit.0 .1.timestamp(),
+                        commit.1 .0,
+                        commit.1 .1.timestamp(),
+                        commit.2
+                    )
+                    .as_bytes(),
+                )
                 .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
         });
         file_w
@@ -129,7 +152,60 @@ pub fn flush_res(path_res: &str, res: &mut Vec<(String, Vec<((usize, DateTime<Ut
         .expect(format!("Couldn't rename {} into {}", filename_tmp, filename).as_str());
 }
 
-pub fn create_cp(path_res: &str, cp: &mut Vec<String>){
+pub fn flush_res_json(
+    path_res: &str,
+    res: &mut Vec<(
+        String,
+        Vec<((usize, DateTime<Utc>), (usize, DateTime<Utc>), Vec<i16>)>,
+    )>,
+) {
+    let author = res.first().unwrap().0.clone();
+    let filename = format!("{}/{}.res", path_res, author);
+    let filename_tmp = format!("{}/{}.tmp", path_res, author);
+    if let Ok(_) = fs::metadata(&filename_tmp) {
+        warn!(
+            "window.rs > flush_res | File {} already exists!",
+            &filename_tmp
+        );
+        return;
+    }
+    if let Ok(_) = fs::metadata(&filename) {
+        warn!("window.rs > flush_res | File {} already exists!", &filename);
+        return;
+    }
+    let Ok(mut file_w) = File::create_new(format!("{}", filename_tmp)) else {
+        warn!("File {} already exists!", filename_tmp);
+        return;
+    };
+    res.iter().for_each(|(author, commits)| {
+        file_w
+            .write(format!("{}:[ ", author).as_bytes())
+            .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
+        commits.iter().for_each(|commit| {
+            file_w
+                .write(
+                    format!(
+                        "({}, {}, {}, {}, {:?}) ",
+                        commit.0 .0,
+                        commit.0 .1.timestamp(),
+                        commit.1 .0,
+                        commit.1 .1.timestamp(),
+                        commit.2
+                    )
+                    .as_bytes(),
+                )
+                .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
+        });
+        file_w
+            .write("]\n".as_bytes())
+            .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
+    });
+    res.clear();
+    std::fs::rename(&filename_tmp, &filename)
+        .expect(format!("Couldn't rename {} into {}", filename_tmp, filename).as_str());
+}
+
+pub fn create_cp(path_res: &str, cp: &mut Vec<String>) {
     let filename = format!("{}/checkpoints", path_res);
     if let Err(_) = fs::metadata(&filename) {
         File::create_new(&filename)

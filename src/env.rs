@@ -2,6 +2,7 @@ use ar_row::Timestamp;
 use ar_row_derive::ArRowDeserialize;
 use arrow::datatypes::{DataType, Decimal128Type, DecimalType, Schema};
 use chashmap::CHashMap;
+use chrono::{DateTime, Utc};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -18,7 +19,7 @@ pub struct Options {
     pub amount_revisions: usize,
     /// amount of author
     pub amount_authors: u64,
-    /// amount of origin with an altered history per result file
+    pub window_range: u64,
     pub chunk: usize,
 }
 
@@ -41,6 +42,15 @@ pub struct AuthorCommit {
     pub commit_id: String,
     pub timestamp_utc0: i64,
     pub timezone: i16,
+}
+
+#[derive(Serialize)]
+pub struct Window {
+    start_index: usize,
+    start_time: DateTime<Utc>,
+    end_index: usize,
+    end_time: DateTime<Utc>,
+    timezones: Vec<i16>,
 }
 
 // pub struct Date_TZ {
