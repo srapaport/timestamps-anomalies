@@ -54,7 +54,7 @@ pub struct Window {
 }
 
 #[derive(Serialize)]
-pub struct Windows{
+pub struct Windows {
     pub author: String,
     pub windows: Vec<Window>,
 }

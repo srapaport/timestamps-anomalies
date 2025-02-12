@@ -50,7 +50,10 @@ pub fn window_tz_inconsistency_extraction(
         if min_time.is_some_and(|time| first_commit.1 < time) {
             continue;
         }
-        if commits.get(i + 1).is_some_and(|(_, _, tz)| first_commit.2 == *tz){
+        if commits
+            .get(i + 1)
+            .is_some_and(|(_, _, tz)| first_commit.2 == *tz)
+        {
             continue;
         }
         let max_time = first_commit.1 + Duration::from_secs(window_range);
@@ -108,10 +111,13 @@ pub fn flush_res(path_res: &str, res: &mut Vec<env::Windows>) {
         warn!("File {} already exists!", filename_tmp);
         return;
     };
-    res.iter().for_each(|elt|{
-        let json = serde_json::to_string_pretty(elt).expect(&format!("couldn't serialize window for author {}", elt.author));
+    res.iter().for_each(|elt| {
+        let json = serde_json::to_string_pretty(elt).expect(&format!(
+            "couldn't serialize window for author {}",
+            elt.author
+        ));
         file_w
-            .write(format!("{}\n",json).as_bytes())
+            .write(format!("{}\n", json).as_bytes())
             .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
     });
 
