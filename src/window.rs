@@ -94,7 +94,7 @@ pub fn window_tz_inconsistency_extraction(
 
 pub fn flush_res(path_res: &str, res: &mut Vec<env::Windows>) {
     let author = res.first().unwrap().author.clone();
-    let filename = format!("{}/{}.res", path_res, author);
+    let filename = format!("{}/{}.json", path_res, author);
     let filename_tmp = format!("{}/{}.tmp", path_res, author);
     if let Ok(_) = fs::metadata(&filename_tmp) {
         warn!(
