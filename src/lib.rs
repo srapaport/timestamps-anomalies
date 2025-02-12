@@ -2,7 +2,6 @@ pub mod env;
 mod retrieval;
 pub mod utils;
 mod window;
-use chrono::{DateTime, Utc};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::ThreadPoolBuilder;
 use rocksdb::{Options, DB};
@@ -20,6 +19,15 @@ pub fn retrieve_revision_timezones(opts: &env::Options) {
     info!("Total retrieval time: {:.2?}", start.elapsed());
 }
 
+pub fn retrieve_revision_timezones_author_committer(opts: &env::Options) {
+    let start = Instant::now();
+    retrieval::save_db(
+        retrieval::load_revisions_from_orc_same_author_committer(&opts),
+        &opts,
+    );
+    info!("Total retrieval time: {:.2?}", start.elapsed());
+}
+
 pub fn window_tz_inconsistency(opts: &env::Options) {
     let current_cp: Vec<String>;
     let results_path = opts.results.clone();
@@ -27,12 +35,7 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
         Some(cp) => current_cp = cp,
         None => current_cp = Vec::new(),
     }
-    let (tx, rx) = channel::<
-        Option<(
-            String,
-            Vec<((usize, DateTime<Utc>), (usize, DateTime<Utc>), Vec<i16>)>,
-        )>,
-    >();
+    let (tx, rx) = channel::<Option<(String, Vec<env::Window>)>>();
     let path_db = opts.output_dir.clone();
     let amount_author_db = opts.amount_authors;
     let window_range = opts.window_range;
@@ -41,8 +44,9 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
         //open rocksdb
         let options = Options::default();
         let db = DB::open(&options, &path_db).unwrap();
-        let mut amount_of_err = 0;
-        let mut amount_window_tz_inconsistency = AtomicUsize::new(0);
+        let amount_of_err = AtomicUsize::new(0);
+        let amount_window_tz_inconsistency = AtomicUsize::new(0);
+        let amount_author_parsed = AtomicUsize::new(0);
         // let mut author_window_tz_inconsistency = vec![];
         let multi_bar = MultiProgress::new();
         let bar = multi_bar.add(ProgressBar::new(amount_author_db));
@@ -76,6 +80,7 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
                                 let commits = commits.clone();
                                 let amount_window_tz_inconsistency =
                                     &amount_window_tz_inconsistency;
+                                let amount_author_parsed = &amount_author_parsed;
                                 let tx = tx.clone();
                                 move |_| {
                                     let suspicious_pattern =
@@ -95,51 +100,67 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
                                         )
                                         .as_str(),
                                     );
+                                    amount_author_parsed.fetch_add(1, Ordering::Relaxed);
                                 }
                             });
                             bar.inc(1);
                         }
                         Err(_) => {
-                            amount_of_err += 1;
-                            warn!("data unreadable from rocksdb {amount_of_err}");
+                            amount_of_err.fetch_add(1, Ordering::Relaxed);
+                            warn!("data unreadable from rocksdb");
                             continue;
                         }
                     }
                 }
             });
         });
+        bar.finish_and_clear();
         write_error_time(results_path).expect("couldn't flush error messages");
         println!(
+            "Amount of author parsed: {}",
+            amount_author_parsed.load(Ordering::Relaxed)
+        );
+        println!(
             "Amount of author flagged: {}",
-            amount_window_tz_inconsistency.get_mut()
+            amount_window_tz_inconsistency.load(Ordering::Relaxed)
         );
         println!(
             "Ratio of author changing timezones at least 2 times in a given window: {:.2}%",
-            (*amount_window_tz_inconsistency.get_mut() as f64 / amount_author_db as f64) * 100.0
+            (amount_window_tz_inconsistency.load(Ordering::Relaxed) as f64
+                / amount_author_db as f64)
+                * 100.0
         );
-        println!("Amount of RocksDB err: {}", amount_of_err);
+        println!(
+            "Amount of RocksDB err: {}",
+            amount_of_err.load(Ordering::Relaxed)
+        );
         println!(
             "Amount of datetime err: {}",
             env::ERROR_DATETIME.lock().unwrap().len()
         );
-        bar.finish_with_message("Finish checking all authors");
     });
 
-    let mut res: Vec<(
-        String,
-        Vec<((usize, DateTime<Utc>), (usize, DateTime<Utc>), Vec<i16>)>,
-    )> = Vec::new();
+    let mut res: Vec<env::Windows> = Vec::new();
     let mut cp: Vec<String> = Vec::new();
+    let mut recv_err = AtomicUsize::new(0);
     for _ in 0..opts.amount_authors {
-        if let Some(package) = rx.recv().expect("Couldn't receive package") {
-            if res.len() > opts.chunk {
-                window::flush_res(&opts.results, &mut res);
-                window::create_cp(&opts.results, &mut cp);
+        if let Ok(package) = rx.recv() {
+            if let Some(windows) = package {
+                if res.len() > opts.chunk {
+                    window::flush_res(&opts.results, &mut res);
+                    window::create_cp(&opts.results, &mut cp);
+                }
+                cp.push(windows.0.clone());
+                if windows.1.len() > 0 {
+                    res.push(env::Windows {
+                        author: windows.0,
+                        windows: windows.1,
+                    });
+                }
             }
-            cp.push(package.0.clone());
-            if package.1.len() > 0 {
-                res.push(package);
-            }
+        } else {
+            warn!("Couldn't receive package");
+            recv_err.fetch_add(1, Ordering::Relaxed);
         }
     }
     if res.len() > 0 {
@@ -148,6 +169,7 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
     if cp.len() > 0 {
         window::create_cp(&opts.results, &mut cp);
     }
+    println!("Amount of package not received: {}", recv_err.get_mut());
 
     jh.join().unwrap();
 }
