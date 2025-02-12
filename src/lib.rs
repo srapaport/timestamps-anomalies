@@ -5,6 +5,7 @@ mod window;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::ThreadPoolBuilder;
 use rocksdb::{Options, DB};
+use utils::windows_len;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::channel;
@@ -146,7 +147,7 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
     for _ in 0..opts.amount_authors {
         if let Ok(package) = rx.recv() {
             if let Some(windows) = package {
-                if res.len() > opts.chunk {
+                if windows_len(&res) > opts.chunk {
                     window::flush_res(&opts.results, &mut res);
                     window::create_cp(&opts.results, &mut cp);
                 }
@@ -176,7 +177,7 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
 
 pub fn write_error_time(results: String) -> std::io::Result<()> {
     let error_times = env::ERROR_DATETIME.lock().unwrap();
-    let path = format!("{}/error_time.json", results);
+    let path = format!("{}/logs/error_time.json", results);
     std::fs::write(path, serde_json::to_string(&*error_times).unwrap())?;
     Ok(())
 }

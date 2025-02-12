@@ -51,7 +51,8 @@ pub fn single_author_commits(
     match db.get(author) {
         Ok(val) => match val {
             Some(res) => {
-                let commits: Vec<(String, i64, i16)> = bincode::deserialize(&res[..]).unwrap();
+                let mut commits: Vec<(String, i64, i16)> = bincode::deserialize(&res[..]).unwrap();
+                commits.sort_unstable_by_key(|&(_, timestamp, _)| timestamp);
                 return Some(commits);
             }
             None => return None,
@@ -130,4 +131,12 @@ pub fn generate_test_sample(amount_of_author: usize) -> Vec<env::Windows> {
         });
     }
     test
+}
+
+pub fn windows_len(res: &Vec<env::Windows>)->usize{
+    let mut size = 0;
+    res.iter().for_each(|windows|{
+        size += windows.windows.len();
+    });
+    size
 }

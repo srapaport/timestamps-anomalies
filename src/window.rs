@@ -111,7 +111,7 @@ pub fn flush_res(path_res: &str, res: &mut Vec<env::Windows>) {
         warn!("File {} already exists!", filename_tmp);
         return;
     };
-    res.iter().for_each(|elt| {
+    /* res.iter().for_each(|elt| {
         let json = serde_json::to_string_pretty(elt).expect(&format!(
             "couldn't serialize window for author {}",
             elt.author
@@ -119,7 +119,14 @@ pub fn flush_res(path_res: &str, res: &mut Vec<env::Windows>) {
         file_w
             .write(format!("{}\n", json).as_bytes())
             .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
-    });
+    }); */
+
+    let json = serde_json::to_string(res).expect(
+        "couldn't serialize windows"
+    );
+    file_w
+        .write(json.as_bytes())
+        .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
 
     res.clear();
     std::fs::rename(&filename_tmp, &filename)
