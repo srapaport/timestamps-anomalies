@@ -20,10 +20,7 @@ pub fn amount_of_commits(opts: &env::Options, author: String) -> usize {
     }
 }
 
-pub fn single_author_window_res(
-    opts: &env::Options,
-    author: String,
-) -> Option<Vec<((usize, DateTime<Utc>), (usize, DateTime<Utc>), Vec<i16>)>> {
+pub fn single_author_window_res(opts: &env::Options, author: String) -> Option<Vec<env::Window>> {
     let options = Options::default();
     let db = DB::open(&options, opts.output_dir.as_str()).unwrap();
     match db.get(author) {
@@ -63,9 +60,28 @@ pub fn single_author_commits(
     }
 }
 
+pub fn get_author_commits_range(opts: &env::Options, author: String, start_index: usize, end_index: usize)-> Option<Vec<(String, i64, i16)>>{
+    let options = Options::default();
+    let db = DB::open(&options, opts.output_dir.as_str()).unwrap();
+    match db.get(author) {
+        Ok(val) => match val {
+            Some(res) => {
+                let mut commits: Vec<(String, i64, i16)> = bincode::deserialize(&res[..]).unwrap();
+                commits.sort_unstable_by_key(|&(_, timestamp, _)| timestamp);
+                return Some(commits.into_iter()
+                    .skip(start_index)
+                    .take(end_index - start_index + 1)
+                    .collect());
+            }
+            None => return None,
+        },
+        Err(_) => return None,
+    }
+}
+
 fn generate_commits(
     amount_of_window: usize,
-) -> Vec<((usize, DateTime<Utc>), (usize, DateTime<Utc>), Vec<i16>)> {
+) -> Vec<env::Window> {
     let mut commits = Vec::new();
     for _ in 0..amount_of_window {
         let size = rand::random_range(3..=10);
@@ -77,11 +93,13 @@ fn generate_commits(
         let j: usize = rand::random_range(i + 1..i + 100);
         let i_date = rand::random_range(946684800..Utc::now().timestamp());
         let j_date = rand::random_range(i_date..i_date + 100_000);
-        commits.push((
-            (i, DateTime::from_timestamp(i_date, 0).unwrap()),
-            (j, DateTime::from_timestamp(j_date, 0).unwrap()),
-            random_vec,
-        ));
+        commits.push(env::Window{
+            start_index: i,
+            start_time: DateTime::from_timestamp(i_date, 0).unwrap(),
+            end_index: j,
+            end_time: DateTime::from_timestamp(j_date, 0).unwrap(),
+            timezones: random_vec,
+        });
     }
     commits
 }
@@ -98,14 +116,14 @@ fn generate_author() -> String {
 
 pub fn generate_test_sample(
     amount_of_author: usize,
-) -> Vec<(
-    String,
-    Vec<((usize, DateTime<Utc>), (usize, DateTime<Utc>), Vec<i16>)>,
-)> {
+) -> Vec<env::Windows> {
     let mut test = Vec::new();
     for _ in 0..amount_of_author {
         let amount_of_window = rand::random_range(1..=100);
-        test.push((generate_author(), generate_commits(amount_of_window)));
+        test.push(env::Windows{
+            author: generate_author(),
+            windows: generate_commits(amount_of_window),
+        });
     }
     test
 }
