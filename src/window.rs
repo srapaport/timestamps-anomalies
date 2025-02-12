@@ -18,8 +18,7 @@ use crate::env;
 pub fn window_tz_inconsistency_extraction(
     mut commits: Vec<(String, i64, i16)>,
     window_range: u64,
-    // progress: &MultiProgress,
-) -> Vec<((usize, DateTime<Utc>), (usize, DateTime<Utc>), Vec<i16>)> {
+) -> Vec<env::Window> {
     //sort commits
     commits.sort_unstable_by_key(|&(_, timestamp, _)| timestamp);
     let commits: Vec<(String, DateTime<Utc>, i16)> = commits
@@ -44,21 +43,14 @@ pub fn window_tz_inconsistency_extraction(
         })
         .collect();
 
-    //let mut suspicious_pattern: Vec<Vec<(String, DateTime<Utc>, i16)>> = Vec::new();
-    let mut suspicious_pattern: Vec<((usize, DateTime<Utc>), (usize, DateTime<Utc>), Vec<i16>)> =
-        Vec::new();
-
-    // let bar = progress.add(ProgressBar::new(commits.len() as u64));
-    // bar.set_style(
-    //     ProgressStyle::with_template(
-    //         "{wide_bar} {pos} {percent_precise}% {elapsed_precise} {eta}",
-    //     )
-    //     .unwrap(),
-    // );
+    let mut suspicious_pattern: Vec<env::Window> = Vec::new();
     let mut min_time = None;
     let mut min_offset = 0;
     for (i, first_commit) in commits.iter().enumerate() {
         if min_time.is_some_and(|time| first_commit.1 < time) {
+            continue;
+        }
+        if commits.get(i + 1).is_some_and(|(_, _, tz)| first_commit.2 == *tz){
             continue;
         }
         let max_time = first_commit.1 + Duration::from_secs(window_range);
@@ -78,11 +70,13 @@ pub fn window_tz_inconsistency_extraction(
                 .collect();
             if timezone_seq.iter().count() > 2 {
                 //suspicious_pattern.push(commits[i..i + count].to_vec());
-                suspicious_pattern.push((
-                    (i, commits[i].1),
-                    (i + count, commits[i + count - 1].1),
-                    timezone_seq,
-                ));
+                suspicious_pattern.push(env::Window {
+                    start_index: i,
+                    start_time: commits[i].1,
+                    end_index: i + count,
+                    end_time: commits[i + count - 1].1,
+                    timezones: timezone_seq,
+                });
             }
         }
         if let Some(next_commit) = commits.get(i + count) {
@@ -92,21 +86,11 @@ pub fn window_tz_inconsistency_extraction(
             break;
         }
     }
-    //bar.inc(1);
-
-    // bar.finish_and_clear();
-    // progress.remove(&bar);
     suspicious_pattern
 }
 
-pub fn flush_res(
-    path_res: &str,
-    res: &mut Vec<(
-        String,
-        Vec<((usize, DateTime<Utc>), (usize, DateTime<Utc>), Vec<i16>)>,
-    )>,
-) {
-    let author = res.first().unwrap().0.clone();
+pub fn flush_res(path_res: &str, res: &mut Vec<env::Windows>) {
+    let author = res.first().unwrap().author.clone();
     let filename = format!("{}/{}.res", path_res, author);
     let filename_tmp = format!("{}/{}.tmp", path_res, author);
     if let Ok(_) = fs::metadata(&filename_tmp) {
@@ -124,82 +108,13 @@ pub fn flush_res(
         warn!("File {} already exists!", filename_tmp);
         return;
     };
-    res.iter().for_each(|(author, commits)| {
+    res.iter().for_each(|elt|{
+        let json = serde_json::to_string_pretty(elt).expect(&format!("couldn't serialize window for author {}", elt.author));
         file_w
-            .write(format!("{}:[ ", author).as_bytes())
-            .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
-        commits.iter().for_each(|commit| {
-            file_w
-                .write(
-                    format!(
-                        "({}, {}, {}, {}, {:?}) ",
-                        commit.0 .0,
-                        commit.0 .1.timestamp(),
-                        commit.1 .0,
-                        commit.1 .1.timestamp(),
-                        commit.2
-                    )
-                    .as_bytes(),
-                )
-                .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
-        });
-        file_w
-            .write("]\n".as_bytes())
+            .write(format!("{}\n",json).as_bytes())
             .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
     });
-    res.clear();
-    std::fs::rename(&filename_tmp, &filename)
-        .expect(format!("Couldn't rename {} into {}", filename_tmp, filename).as_str());
-}
 
-pub fn flush_res_json(
-    path_res: &str,
-    res: &mut Vec<(
-        String,
-        Vec<((usize, DateTime<Utc>), (usize, DateTime<Utc>), Vec<i16>)>,
-    )>,
-) {
-    let author = res.first().unwrap().0.clone();
-    let filename = format!("{}/{}.res", path_res, author);
-    let filename_tmp = format!("{}/{}.tmp", path_res, author);
-    if let Ok(_) = fs::metadata(&filename_tmp) {
-        warn!(
-            "window.rs > flush_res | File {} already exists!",
-            &filename_tmp
-        );
-        return;
-    }
-    if let Ok(_) = fs::metadata(&filename) {
-        warn!("window.rs > flush_res | File {} already exists!", &filename);
-        return;
-    }
-    let Ok(mut file_w) = File::create_new(format!("{}", filename_tmp)) else {
-        warn!("File {} already exists!", filename_tmp);
-        return;
-    };
-    res.iter().for_each(|(author, commits)| {
-        file_w
-            .write(format!("{}:[ ", author).as_bytes())
-            .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
-        commits.iter().for_each(|commit| {
-            file_w
-                .write(
-                    format!(
-                        "({}, {}, {}, {}, {:?}) ",
-                        commit.0 .0,
-                        commit.0 .1.timestamp(),
-                        commit.1 .0,
-                        commit.1 .1.timestamp(),
-                        commit.2
-                    )
-                    .as_bytes(),
-                )
-                .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
-        });
-        file_w
-            .write("]\n".as_bytes())
-            .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
-    });
     res.clear();
     std::fs::rename(&filename_tmp, &filename)
         .expect(format!("Couldn't rename {} into {}", filename_tmp, filename).as_str());
