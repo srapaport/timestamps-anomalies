@@ -2,9 +2,7 @@
 /python
 **/*.pkl
 # teaser db for tests
-rocksdb_timezones_2021/*
-rocksdb_timezones_2024/*
-rocksdb_test_2021/*
+rocksdb*/*
 **/__pycache__/*
 results/*
 **/.venv/*
