@@ -46,11 +46,17 @@ pub struct AuthorCommit {
 
 #[derive(Serialize)]
 pub struct Window {
-    start_index: usize,
-    start_time: DateTime<Utc>,
-    end_index: usize,
-    end_time: DateTime<Utc>,
-    timezones: Vec<i16>,
+    pub start_index: usize,
+    pub start_time: DateTime<Utc>,
+    pub end_index: usize,
+    pub end_time: DateTime<Utc>,
+    pub timezones: Vec<i16>,
+}
+
+#[derive(Serialize)]
+pub struct Windows{
+    pub author: String,
+    pub windows: Vec<Window>,
 }
 
 // pub struct Date_TZ {
