@@ -3,7 +3,50 @@ use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
 // use indicatif::MultiProgress;
+use log::info;
 use rocksdb::{Options, DB};
+use std::{
+    fs::{self, File},
+    io::{BufRead, BufReader, Write},
+};
+
+pub fn create_cp(path_res: &str, cp: &mut Vec<String>) {
+    let filename = format!("{}/checkpoints", path_res);
+    if let Err(_) = fs::metadata(&filename) {
+        File::create_new(&filename)
+            .expect(format!("lib.rs > create_cp | File {} already exists!", &filename).as_str());
+    }
+    let mut cp_file = fs::OpenOptions::new()
+        .append(true)
+        .open(filename)
+        .expect(format!("cannot open checkpoints file").as_str());
+    cp.iter().for_each(|author| {
+        cp_file
+            .write(format!("{}\n", author).as_bytes())
+            .expect("couldn't write data in checkpoints");
+    });
+    cp.clear();
+}
+
+pub fn load_checkpoint(path_res: &str) -> Option<Vec<String>> {
+    let mut res = Vec::new();
+
+    if let Ok(cp_file) = File::open(format!("{}/checkpoints", path_res)) {
+        BufReader::new(cp_file)
+            .lines()
+            .into_iter()
+            .for_each(|line| {
+                if let Ok(author) = line {
+                    res.push(author);
+                }
+            });
+    } else {
+        info!("couldn't open checkpoints file");
+        return None;
+    }
+
+    return Some(res);
+}
 
 pub fn amount_of_commits(opts: &env::Options, author: String) -> usize {
     let options = Options::default();
@@ -26,15 +69,33 @@ pub fn single_author_window_res(opts: &env::Options, author: String) -> Option<V
     match db.get(author) {
         Ok(val) => match val {
             Some(res) => {
-                let commits: Vec<(String, i64, i16)> = bincode::deserialize(&res[..]).unwrap();
+                let commits: env::Revisions = bincode::deserialize(&res[..]).unwrap();
                 /* let commits: Vec<(String, DateTime<Utc>, i16)> = commits.into_iter().map(|commit|{
                     (commit.0, DateTime::from_timestamp(commit.1, 0).unwrap(), commit.2)
                 }).collect(); */
                 return Some(crate::window::window_tz_inconsistency_extraction(
-                    commits,
+                    commits.revisions,
                     env::ONE_DAY,
                     // &MultiProgress::new(),
                 ));
+            }
+            None => return None,
+        },
+        Err(_) => return None,
+    }
+}
+
+pub fn single_author_flight_res(opts: &env::Options, author: String) -> Option<Vec<env::Flight>> {
+    let options = Options::default();
+    let db = DB::open(&options, opts.output_dir.as_str()).unwrap();
+    match db.get(author) {
+        Ok(val) => match val {
+            Some(res) => {
+                let commits: Vec<(String, i64, i16, String)> = bincode::deserialize(&res[..]).unwrap();
+                /* let commits: Vec<(String, DateTime<Utc>, i16)> = commits.into_iter().map(|commit|{
+                    (commit.0, DateTime::from_timestamp(commit.1, 0).unwrap(), commit.2)
+                }).collect(); */
+                return Some(crate::travel::travel_time(commits));
             }
             None => return None,
         },
@@ -106,6 +167,7 @@ fn generate_commits(amount_of_window: usize) -> Vec<env::Window> {
             end_index: j,
             end_time: DateTime::from_timestamp(j_date, 0).unwrap(),
             timezones: random_vec,
+            // status: generate_status(),
         });
     }
     commits
@@ -121,22 +183,41 @@ fn generate_author() -> String {
         .collect()
 }
 
+fn _generate_status() -> env::Status {
+    let random_value = rand::random_range(0..=2);
+    match random_value {
+        0 => env::Status::Author,
+        1 => env::Status::Committer,
+        2 => env::Status::Both,
+        _ => env::Status::Unkmown,
+    }
+}
+
 pub fn generate_test_sample(amount_of_author: usize) -> Vec<env::Windows> {
     let mut test = Vec::new();
     for _ in 0..amount_of_author {
         let amount_of_window = rand::random_range(1..=100);
         test.push(env::Windows {
             author: generate_author(),
+            metadata: env::Metadata::default(),
             windows: generate_commits(amount_of_window),
         });
     }
     test
 }
 
-pub fn windows_len(res: &Vec<env::Windows>)->usize{
+pub fn windows_len(res: &Vec<env::Windows>) -> usize {
     let mut size = 0;
-    res.iter().for_each(|windows|{
+    res.iter().for_each(|windows| {
         size += windows.windows.len();
+    });
+    size
+}
+
+pub fn flights_len(res: &Vec<env::Flights>) -> usize {
+    let mut size = 0;
+    res.iter().for_each(|flights| {
+        size += flights.flights.len();
     });
     size
 }

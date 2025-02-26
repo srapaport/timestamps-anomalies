@@ -53,24 +53,83 @@ pub struct Window {
     pub timezones: Vec<i16>,
 }
 
+#[derive(Serialize, Default)]
+pub enum Status {
+    Author,
+    Committer,
+    Both,
+    #[default]
+    Unkmown,
+}
+
 #[derive(Serialize)]
 pub struct Windows {
     pub author: String,
+    pub metadata: Metadata,
     pub windows: Vec<Window>,
 }
 
-// pub struct Date_TZ {
-//     pub
-// }
+#[derive(Serialize)]
+pub struct Flight {
+    pub commits: (String, String),
+    pub timestamps: (DateTime<Utc>, DateTime<Utc>),
+    pub timezones: (i16, i16),
+}
 
-pub type AllRevisions = CHashMap<String, Vec<(String, i64, i16)>>;
+#[derive(Serialize)]
+pub struct Flights {
+    pub author: String,
+    pub metadata: Metadata,
+    pub flights: Vec<Flight>,
+}
+
+#[derive(Default, Clone, Serialize, Deserialize)]
+pub struct CommitAuthor {
+    pub author_name: String,
+    pub author_email: String,
+    pub committer_name: String,
+    pub committer_email: String,
+}
+
+#[derive(Default, Clone, Serialize, Deserialize)]
+pub struct Metadata {
+    pub name: String,
+    pub email: String,
+}
+
+#[derive(Default, Clone, Serialize, Deserialize)]
+pub struct Revisions {
+    pub metadata: Metadata,
+    pub revisions: Vec<(String, i64, i16, String)>,
+}
+pub type AllRevisions = CHashMap<String, Revisions>;
 
 pub const ONE_DAY: u64 = 24 * 60 * 60;
 pub const ONE_WEEK: u64 = 7 * 24 * 60 * 60;
 pub const AMOUNT_AUHTOR_2021: u64 = 135_801;
 pub const AUTHOR_DB_2024: u64 = 84_117_132;
 pub const AUTHOR_DB_2024_EQUALS: u64 = 59_759_065;
-pub static ERROR_DATETIME: Mutex<Vec<(String, i64)>> = Mutex::new(Vec::new());
+pub static ERROR_DATETIME: Mutex<Vec<(String, i64)>> = Mutex::new(Vec::new()); 
+
+pub const ALL_LIFE_OF_COMMITS: usize = 15_330;
+
+pub static BOTS: &[&str] = &[
+    "buildbot",
+    "jenkins",
+    "snyk-bot",
+    "circleci",
+    "github-actions",
+    "bors",
+    "appveyor",
+    "pyup-bot",
+    "gitlab-ci",
+    "renovatebot",
+    "dependabot",
+    "semantic-release-bot",
+    "fossabot",
+    "azure-pipelines",
+    "gh-pages",
+];
 
 pub const ORC_BATCH_SIZE: usize = 1024;
 pub fn transform_schema(schema: &Schema) -> Arc<Schema> {
