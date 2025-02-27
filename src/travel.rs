@@ -1,10 +1,8 @@
-use std::{
-    fs::{self, File},
-    io::Write,
-};
+use std::fs::{self};
 
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use log::{error, warn};
+use serde::Serialize;
 
 use crate::env;
 
@@ -49,29 +47,42 @@ pub fn travel_time(mut commits: Vec<(String, i64, i16, String)>) -> Vec<env::Fli
 pub fn flush_res(path_res: &str, res: &mut Vec<env::Flights>) {
     let author = res.first().unwrap().author.clone();
     let filename = format!("{}/{}.json", path_res, author);
-    let filename_tmp = format!("{}/{}.tmp", path_res, author);
-    if let Ok(_) = fs::metadata(&filename_tmp) {
-        warn!(
-            "travel.rs > flush_res | File {} already exists!",
-            &filename_tmp
-        );
-        return;
-    }
+
     if let Ok(_) = fs::metadata(&filename) {
         warn!("travel.rs > flush_res | File {} already exists!", &filename);
         return;
     }
-    let Ok(mut file_w) = File::create_new(format!("{}", filename_tmp)) else {
-        warn!("File {} already exists!", filename_tmp);
-        return;
-    };
+    let mut writer = csv::Writer::from_path(&filename).unwrap();
+    // writer.write_record(&["author", "name", "email", "start_index", "start_time", "end_index", "end_time", "timezones"]).unwrap();
 
-    let json = serde_json::to_string(res).expect("couldn't serialize windows");
-    file_w
-        .write(json.as_bytes())
-        .expect(format!("couldn't write datas in file: {}", filename_tmp).as_str());
+    #[derive(Serialize)]
+    struct Field {
+        author: String,
+        name: String,
+        email: String,
+        commit_a: String,
+        commit_b: String,
+        timestamp_a: DateTime<Utc>,
+        timestamp_b: DateTime<Utc>,
+        timezones: (i16, i16),
+    }
 
+    res.iter().for_each(|flights| {
+        flights.flights.iter().for_each(|flight| {
+            writer
+                .serialize(Field {
+                    author: flights.author.clone(),
+                    name: flights.metadata.name.clone(),
+                    email: flights.metadata.email.clone(),
+                    commit_a: flight.commits.0.to_owned(),
+                    commit_b: flight.commits.1.to_owned(),
+                    timestamp_a: flight.timestamps.0,
+                    timestamp_b: flight.timestamps.1,
+                    timezones: flight.timezones,
+                })
+                .unwrap();
+        });
+    });
+    writer.flush().unwrap();
     res.clear();
-    std::fs::rename(&filename_tmp, &filename)
-        .expect(format!("Couldn't rename {} into {}", filename_tmp, filename).as_str());
 }

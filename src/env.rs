@@ -109,7 +109,7 @@ pub const ONE_WEEK: u64 = 7 * 24 * 60 * 60;
 pub const AMOUNT_AUHTOR_2021: u64 = 135_801;
 pub const AUTHOR_DB_2024: u64 = 84_117_132;
 pub const AUTHOR_DB_2024_EQUALS: u64 = 59_759_065;
-pub static ERROR_DATETIME: Mutex<Vec<(String, i64)>> = Mutex::new(Vec::new()); 
+pub static ERROR_DATETIME: Mutex<Vec<(String, i64)>> = Mutex::new(Vec::new());
 
 pub const ALL_LIFE_OF_COMMITS: usize = 15_330;
 

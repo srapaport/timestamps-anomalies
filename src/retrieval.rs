@@ -6,8 +6,8 @@ use indicatif::{ProgressBar, ProgressStyle};
 use orc_rust::projection::ProjectionMask;
 use orc_rust::ArrowReaderBuilder;
 use rayon::prelude::*;
-use serde::Serialize;
-use std::fs::{self, File};
+use std::fs::File;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::Instant;
 
@@ -35,11 +35,11 @@ pub fn load_revisions_from_orc(opts: &env::Options) -> env::AllRevisions {
     let bar = ProgressBar::new(opts.amount_revisions as u64);
     bar.set_style(
         ProgressStyle::with_template(
-            "{wide_bar} {pos} {percent_precise}% {elapsed_precise} {duration_precise} {eta}",
+            "{msg} {wide_bar} {pos} {percent_precise}% {elapsed_precise} {duration_precise} {eta}",
         )
         .unwrap(),
     );
-     
+
     let real_names = load_authors("list_revisions_full.csv");
 
     files.into_par_iter().for_each(|dir_entry| {
@@ -99,13 +99,14 @@ pub fn load_revisions_from_orc(opts: &env::Options) -> env::AllRevisions {
                 let mut valid = false;
                 let mut data = env::Revisions::default();
                 let mut info = env::CommitAuthor::default();
-                if let Some(commit_author) = real_names.get(&current_id){
-                    if env::BOTS.contains(&commit_author.author_name.as_str()) || env::BOTS.contains(&commit_author.committer_name.as_str()){
+                if let Some(commit_author) = real_names.get(&current_id) {
+                    if env::BOTS.contains(&commit_author.author_name.as_str())
+                        || env::BOTS.contains(&commit_author.committer_name.as_str())
+                    {
                         amount_bot.fetch_add(1, Ordering::Relaxed);
                         continue;
                     }
                     info = commit_author.clone();
-                    
                 }
                 if let Some(current_date) = current_date {
                     if let Some(current_date_offset) = current_date_offset {
@@ -139,47 +140,46 @@ pub fn load_revisions_from_orc(opts: &env::Options) -> env::AllRevisions {
                     } else {
                         amount_none_committer_date.fetch_add(1, Ordering::Relaxed);
                     }
-
-                }
-                else{
-                    if let Some(old_value) = data.revisions.pop(){
+                } else {
+                    if let Some(old_value) = data.revisions.pop() {
                         data.revisions.push((
                             old_value.0,
                             old_value.1,
                             old_value.2,
-                            String::from("Both")
+                            String::from("Both"),
                         ));
                     }
                 }
-                data.revisions.into_iter().for_each(|rev|{
+                data.revisions.into_iter().for_each(|rev| {
                     let mut metadata = env::Metadata::default();
                     let mut key = String::new();
-                    match rev.3.as_str(){
-                        "Author" | "Both" =>{
+                    match rev.3.as_str() {
+                        "Author" | "Both" => {
                             metadata.name = info.author_name.clone();
                             metadata.email = info.author_email.clone();
                             key = current_author.clone();
-                        }, 
+                        }
                         "Committer" => {
                             metadata.name = info.committer_name.clone();
                             metadata.email = info.committer_email.clone();
                             key = current_committer.clone();
-                        },
+                        }
                         _ => (),
                     }
                     // todo!("insert only author or committer info not both -> change struct CommitAuthor or Revisions.metadata");
-                    all_revisions.upsert(key, 
-                        ||{
-                            env::Revisions {
-                                metadata: metadata.clone(),
-                                revisions: vec![rev.clone()],
-                            }
-                        }, |v|{
-                            if v.metadata.name.is_empty(){
+                    all_revisions.upsert(
+                        key,
+                        || env::Revisions {
+                            metadata: metadata.clone(),
+                            revisions: vec![rev.clone()],
+                        },
+                        |v| {
+                            if v.metadata.name.is_empty() {
                                 v.metadata = metadata.clone();
                             }
                             v.revisions.push(rev.clone());
-                        });
+                        },
+                    );
                 });
                 if valid {
                     amount_rev_retrieved.fetch_add(1, Ordering::Relaxed);
@@ -411,7 +411,7 @@ pub fn load_revisions_from_orc(opts: &env::Options) -> env::AllRevisions {
 }
  */
 
- pub fn load_revisions_from_orc_through_time(opts: &env::Options) -> CHashMap<i32, usize> {
+/* pub fn load_revisions_from_orc_through_time(opts: &env::Options) -> CHashMap<i32, usize> {
     let start = Instant::now();
 
     let all_revisions = CHashMap::new();
@@ -519,6 +519,7 @@ pub fn load_revisions_from_orc(opts: &env::Options) -> env::AllRevisions {
 
     all_revisions
 }
+ */
 
 pub fn save_db(all_revisions: env::AllRevisions, opts: &env::Options) {
     let start = Instant::now();
@@ -560,29 +561,102 @@ pub fn save_db(all_revisions: env::AllRevisions, opts: &env::Options) {
     println!("amount_of_err_put = {}", amount_of_err_put);
 }
 
-pub fn save_revision_year(all_revisions: CHashMap<i32, usize>, opts: &env::Options) {
-    let dir_csv = format!("{}/additional", opts.results);
-    if let Err(_) = fs::metadata(&dir_csv) {
-        fs::create_dir(&dir_csv).expect(&format!("Couldn't create dir: {}", &dir_csv));
-    }
-    let path_csv = format!("{}/revisions_through_years.csv", dir_csv);
-    let mut csv_writer = csv::WriterBuilder::new()
-        .flexible(true)
-        .from_path(&path_csv)
-        .expect(&format!("couldn't create writer at: {}", &path_csv));
-
-    #[derive(Serialize)]
-    struct CommitYear {
-        year: i32,
-        amount_of_commits: usize,
-    }
-    all_revisions.into_iter().for_each(|rev| {
-        csv_writer
-            .serialize(CommitYear {
-                year: rev.0,
-                amount_of_commits: rev.1,
-            })
-            .expect(&format!("Couldn't write data : {},{}", rev.0, rev.1));
+pub fn save_commits_year_count(opts: &env::Options) {
+    let start = Instant::now();
+    let bar = ProgressBar::new(4_584_279_537);
+    bar.set_style(
+        ProgressStyle::with_template(
+            "{msg} {wide_bar} {pos} {percent_precise}% {elapsed_precise} {duration_precise} {eta}",
+        )
+        .unwrap(),
+    );
+    let dates = CHashMap::new();
+    let files = std::fs::read_dir("/poolswh/softwareheritage/graph/2024-12-06/orc/revision")
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    files.into_par_iter().for_each(|dir_entry| {
+        let orc_path = dir_entry.path();
+        info!(
+            "orc_path : {}",
+            orc_path
+                .file_name()
+                .unwrap()
+                .to_os_string()
+                .into_string()
+                .unwrap()
+        );
+        let file = File::open(dir_entry.path())
+            .expect(format!("could not open .orc {:?}", orc_path).as_str());
+        let builder = ArrowReaderBuilder::try_new(file).expect("could not make builder");
+        let projection = ProjectionMask::named_roots(
+            builder.file_metadata().root_data_type(),
+            &[
+                "id",
+                "message",
+                "author",
+                "date",
+                "date_offset",
+                "committer",
+                "committer_date",
+                "committer_offset",
+                "directory",
+            ],
+        );
+        let reader_builder = builder
+            .with_projection(projection.clone())
+            .with_batch_size(env::ORC_BATCH_SIZE);
+        let schema = env::transform_schema(&reader_builder.schema());
+        let reader = reader_builder.with_schema(schema).build();
+        reader.for_each(|batch| {
+            let batch = batch.unwrap();
+            for revision in <env::Revision>::from_record_batch(batch).unwrap() {
+                if let Some(committer_date) = revision.committer_date {
+                    if let Some(date) = DateTime::from_timestamp(committer_date.seconds, 0) {
+                        dates.upsert(
+                            date.year(),
+                            || 1,
+                            |v| {
+                                *v = *v + 1;
+                            },
+                        );
+                    }
+                }
+                bar.inc(1);
+            }
+        });
     });
-    csv_writer.flush().unwrap();
+    bar.finish_with_message("Done");
+    println!("time elapsed: {:.2?}", start.elapsed());
+
+    let new_start = Instant::now();
+    let csv_path = format!("{}/additional/commit_year_counts.csv", opts.results);
+
+    write_year_counts_to_csv(&dates, &csv_path);
+    println!("Successfully wrote year counts to {}", csv_path);
+
+    println!("CSV writing time: {:.2?}", new_start.elapsed());
+    println!("Total time elapsed: {:.2?}", start.elapsed());
+}
+
+fn write_year_counts_to_csv<P: AsRef<Path>>(dates_map: &CHashMap<i32, i64>, path: P) {
+    if let Some(parent) = Path::new(path.as_ref()).parent() {
+        std::fs::create_dir_all(parent).unwrap();
+    }
+    let mut writer = csv::Writer::from_path(path).unwrap();
+    writer.write_record(&["year", "count"]).unwrap();
+
+    let mut years = Vec::new();
+    for item in dates_map.clone() {
+        years.push(item.0);
+    }
+    years.sort();
+
+    for year in years {
+        let count = *dates_map.get(&year).unwrap();
+        writer
+            .write_record(&[year.to_string(), count.to_string()])
+            .unwrap();
+    }
+    writer.flush().unwrap();
 }

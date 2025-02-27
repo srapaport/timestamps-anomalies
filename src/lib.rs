@@ -8,6 +8,7 @@ use csv::{ReaderBuilder, StringRecord};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
+use retrieval::save_commits_year_count;
 use rocksdb::{Options, DB};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -36,7 +37,7 @@ pub fn retrieve_revision_timezones(opts: &env::Options) {
 
 pub fn retrieve_revision_through_time(opts: &env::Options) {
     let start = Instant::now();
-    retrieval::save_revision_year(retrieval::load_revisions_from_orc_through_time(opts), opts);
+    retrieval::save_commits_year_count(opts);
     info!("Total retrieval time: {:.2?}", start.elapsed());
 }
 
@@ -51,7 +52,7 @@ pub fn load_authors(path: &str) -> CHashMap<String, env::CommitAuthor> {
         .collect::<Result<Vec<StringRecord>, csv::Error>>()
         .unwrap();
     records.into_par_iter().for_each(|record| {
-    // records.into_iter().for_each(|record| {
+        // records.into_iter().for_each(|record| {
         let mut commit_author = env::CommitAuthor::default();
         let mut commit_id = String::new();
         let mut field_id = 0;
@@ -142,8 +143,7 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
                                 bar.inc(1);
                                 continue;
                             }
-                            let commits: env::Revisions =
-                                bincode::deserialize(&value[..]).unwrap();
+                            let commits: env::Revisions = bincode::deserialize(&value[..]).unwrap();
                             //call window_tz_inconsistency_extraction for each author
                             // bar.set_message(format!("checking inconsistency for author {:?}", author));
                             thread.spawn({
@@ -163,7 +163,12 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
                                         amount_window_tz_inconsistency
                                             .fetch_add(1, Ordering::Relaxed);
                                     }
-                                    tx.send(Some((author.clone(), commits.metadata.clone(), suspicious_pattern))).expect(
+                                    tx.send(Some((
+                                        author.clone(),
+                                        commits.metadata.clone(),
+                                        suspicious_pattern,
+                                    )))
+                                    .expect(
                                         format!(
                                             "Failed sending the message for author: {}",
                                             author
@@ -288,8 +293,7 @@ pub fn flight_inconsistency(opts: &env::Options) {
                                 bar.inc(1);
                                 continue;
                             }
-                            let commits: env::Revisions =
-                                bincode::deserialize(&value[..]).unwrap();
+                            let commits: env::Revisions = bincode::deserialize(&value[..]).unwrap();
                             //call window_tz_inconsistency_extraction for each author
                             // bar.set_message(format!("checking inconsistency for author {:?}", author));
                             thread.spawn({
@@ -302,7 +306,12 @@ pub fn flight_inconsistency(opts: &env::Options) {
                                     if suspicious_pattern.len() > 0 {
                                         amount_flight_inconsistency.fetch_add(1, Ordering::Relaxed);
                                     }
-                                    tx.send(Some((author.clone(), commits.metadata.clone(), suspicious_pattern))).expect(
+                                    tx.send(Some((
+                                        author.clone(),
+                                        commits.metadata.clone(),
+                                        suspicious_pattern,
+                                    )))
+                                    .expect(
                                         format!(
                                             "Failed sending the message for author: {}",
                                             author
@@ -388,4 +397,8 @@ pub fn write_error_time(results: String) -> std::io::Result<()> {
     let path = format!("{}/logs/error_time.json", results);
     std::fs::write(path, serde_json::to_string(&*error_times).unwrap())?;
     Ok(())
+}
+
+pub fn commits_year_count(opts: &env::Options) {
+    save_commits_year_count(opts);
 }

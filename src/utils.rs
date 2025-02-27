@@ -91,7 +91,8 @@ pub fn single_author_flight_res(opts: &env::Options, author: String) -> Option<V
     match db.get(author) {
         Ok(val) => match val {
             Some(res) => {
-                let commits: Vec<(String, i64, i16, String)> = bincode::deserialize(&res[..]).unwrap();
+                let commits: Vec<(String, i64, i16, String)> =
+                    bincode::deserialize(&res[..]).unwrap();
                 /* let commits: Vec<(String, DateTime<Utc>, i16)> = commits.into_iter().map(|commit|{
                     (commit.0, DateTime::from_timestamp(commit.1, 0).unwrap(), commit.2)
                 }).collect(); */
