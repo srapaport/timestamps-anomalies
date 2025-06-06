@@ -4,7 +4,7 @@ use std::time::Instant;
 use timestamps_anomalies::env;
 
 fn main() {
-    let _opts = timestamps_anomalies::env::Options {
+    let _opts_flight = timestamps_anomalies::env::Options {
         // Directory containing the orc files
         orc_dir: "/poolswh/softwareheritage/graph/2024-12-06/orc/revision".to_string(),
         // Directory containing the database files - no slash at the end
@@ -50,11 +50,11 @@ fn main() {
         // Directory containing the database files - no slash at the end
         output_dir: "./rocksdb_timezones_2021".to_string(),
         // path where results are stored - no slash at the end - must exist -> e.g."./results/2023"
-        results: "./results/2021".to_string(),
+        results: "./results/2021/new".to_string(),
         amount_revisions: 5_973_059,
         amount_authors: env::AMOUNT_AUHTOR_2021,
         window_range: env::ONE_DAY,
-        chunk: 500,
+        chunk: 1000,
     };
     let _opts = timestamps_anomalies::env::Options {
         // Directory containing the orc files
@@ -82,15 +82,15 @@ fn main() {
             Naming::Numbers,             // Use numbers for rotated files
             Cleanup::KeepLogFiles(5),    // Keep at most 5 log files
         )
-        .duplicate_to_stderr(Duplicate::Error) // Duplicate logs to stderr
+        .duplicate_to_stderr(Duplicate::Warn) // Duplicate logs to stderr
         .start()
         .unwrap();
     let start = Instant::now();
 
     // timestamps_anomalies::retrieve_revision_through_time(&opts);
-    timestamps_anomalies::retrieve_revision_timezones(&opts);
+    // timestamps_anomalies::retrieve_revision_timezones(&opts);
     timestamps_anomalies::window_tz_inconsistency(&opts);
-    timestamps_anomalies::flight_inconsistency(&opts);
+    // timestamps_anomalies::flight_inconsistency(&opts_flight);
 
     println!("time elapsed: {:.2?}", start.elapsed());
 }

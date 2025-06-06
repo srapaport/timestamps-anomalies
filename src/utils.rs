@@ -128,14 +128,14 @@ pub fn get_author_commits_range(
     author: String,
     start_index: usize,
     end_index: usize,
-) -> Option<Vec<(String, i64, i16)>> {
+) -> Option<Vec<(String, i64, i16, String)>> {
     let options = Options::default();
     let db = DB::open(&options, opts.output_dir.as_str()).unwrap();
     match db.get(author) {
         Ok(val) => match val {
             Some(res) => {
-                let mut commits: Vec<(String, i64, i16)> = bincode::deserialize(&res[..]).unwrap();
-                commits.sort_unstable_by_key(|&(_, timestamp, _)| timestamp);
+                let mut commits: Vec<(String, i64, i16, String)> = bincode::deserialize::<env::Revisions>(&res[..]).unwrap().revisions;
+                commits.sort_unstable_by_key(|&(_, timestamp, _, _)| timestamp);
                 return Some(
                     commits
                         .into_iter()

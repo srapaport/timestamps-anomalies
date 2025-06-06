@@ -12,13 +12,13 @@ use retrieval::save_commits_year_count;
 use rocksdb::{Options, DB};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc::channel;
+use std::sync::{mpsc::channel, Arc};
 use std::thread;
 use std::time::Instant;
 use utils::flights_len;
 use utils::windows_len;
 
-use log::{info, warn};
+use log::{info, warn, error};
 
 pub fn retrieve_revision_timezones(opts: &env::Options) {
     let start = Instant::now();
@@ -100,6 +100,7 @@ pub fn load_authors(path: &str) -> CHashMap<String, env::CommitAuthor> {
 }
 
 pub fn window_tz_inconsistency(opts: &env::Options) {
+    let start = Instant::now();
     let current_cp: Vec<String>;
     let results_path = opts.results.clone();
     match utils::load_checkpoint(&results_path) {
@@ -107,10 +108,16 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
         None => current_cp = Vec::new(),
     }
     let (tx, rx) = channel::<Option<(String, env::Metadata, Vec<env::Window>)>>();
+    let amount_bot_skipped = Arc::new(AtomicUsize::new(0));
     let path_db = opts.output_dir.clone();
     let amount_author_db = opts.amount_authors;
     let window_range = opts.window_range;
-    let jh = thread::spawn(move || {
+    let jh = thread::spawn({
+        let amount_bot_skipped = amount_bot_skipped.clone();
+
+        
+        move || {
+        
         let current_cp = &current_cp;
         //open rocksdb
         let options = Options::default();
@@ -118,16 +125,17 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
         let amount_of_err = AtomicUsize::new(0);
         let amount_window_tz_inconsistency = AtomicUsize::new(0);
         let amount_author_parsed = AtomicUsize::new(0);
+        
         // let mut author_window_tz_inconsistency = vec![];
         let multi_bar = MultiProgress::new();
         let bar = multi_bar.add(ProgressBar::new(amount_author_db));
         bar.set_style(
             ProgressStyle::with_template(
-                "{wide_bar} {pos} {percent_precise}% {elapsed_precise} {eta}",
+                "{msg} {wide_bar} {pos} {percent_precise}% {elapsed_precise} {eta}",
             )
             .unwrap(),
         );
-        let workers = (num_cpus::get() / 3) * 2;
+        let workers = num_cpus::get() / 3;
         let pool = ThreadPoolBuilder::new()
             .num_threads(workers)
             .build()
@@ -144,8 +152,16 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
                                 continue;
                             }
                             let commits: env::Revisions = bincode::deserialize(&value[..]).unwrap();
-                            //call window_tz_inconsistency_extraction for each author
-                            // bar.set_message(format!("checking inconsistency for author {:?}", author));
+                            if commits.revisions.len() >= env::ALL_LIFE_OF_COMMITS {
+                                bar.inc(1);
+                                if let Ok(mut bots) = env::BOTS_SKIPPED.lock() {
+                                    bots.push((author, commits.metadata.name, commits.metadata.email));
+                                } else {
+                                    error!("Failed to acquire lock for BOTS_SKIPPED");
+                                }
+                                amount_bot_skipped.fetch_add(1, Ordering::Relaxed);
+                                continue;
+                            }
                             thread.spawn({
                                 let commits = commits.clone();
                                 let amount_window_tz_inconsistency =
@@ -189,8 +205,13 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
                 }
             });
         });
-        bar.finish_and_clear();
-        write_error_time(results_path).expect("couldn't flush error messages");
+        bar.finish_with_message("Done");
+        write_error_time(&results_path).expect("couldn't flush error messages");
+        write_bots_skipped(&results_path).expect("couldn't flush bot list");
+        println!(
+            "Amount of bot skipped: {}",
+            amount_bot_skipped.load(Ordering::Relaxed)
+        );
         println!(
             "Amount of author parsed: {}",
             amount_author_parsed.load(Ordering::Relaxed)
@@ -213,12 +234,12 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
             "Amount of datetime err: {}",
             env::ERROR_DATETIME.lock().unwrap().len()
         );
-    });
+    }});
 
     let mut res: Vec<env::Windows> = Vec::new();
     let mut cp: Vec<String> = Vec::new();
-    let mut recv_err = AtomicUsize::new(0);
-    for _ in 0..opts.amount_authors {
+    let recv_err = AtomicUsize::new(0);
+    for _ in 0..(opts.amount_authors) {
         if let Ok(package) = rx.recv() {
             if let Some(windows) = package {
                 if (res.len() > 0) && ((windows_len(&res) + windows.2.len()) > opts.chunk) {
@@ -235,7 +256,7 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
                 }
             }
         } else {
-            warn!("Couldn't receive package");
+            info!("Couldn't receive package");
             recv_err.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -245,12 +266,16 @@ pub fn window_tz_inconsistency(opts: &env::Options) {
     if cp.len() > 0 {
         utils::create_cp(&opts.results, &mut cp);
     }
-    println!("Amount of package not received: {}", recv_err.get_mut());
-
+    println!("Amount of package not received: {}", recv_err.load(Ordering::Relaxed));
+    println!("Window time elapsed: {:.2?}", start.elapsed());
     jh.join().unwrap();
+    if recv_err.load(Ordering::Relaxed) != amount_bot_skipped.load(Ordering::Relaxed){
+        error!("Some package not received are not from bots");
+    }
 }
 
 pub fn flight_inconsistency(opts: &env::Options) {
+    let start = Instant::now();
     let current_cp: Vec<String>;
     let results_path = opts.results.clone();
     match utils::load_checkpoint(&results_path) {
@@ -268,16 +293,17 @@ pub fn flight_inconsistency(opts: &env::Options) {
         let amount_of_err = AtomicUsize::new(0);
         let amount_flight_inconsistency = AtomicUsize::new(0);
         let amount_author_parsed = AtomicUsize::new(0);
+        let amount_bots_skipped = AtomicUsize::new(0);
         // let mut author_window_tz_inconsistency = vec![];
         let multi_bar = MultiProgress::new();
         let bar = multi_bar.add(ProgressBar::new(amount_author_db));
         bar.set_style(
             ProgressStyle::with_template(
-                "{wide_bar} {pos} {percent_precise}% {elapsed_precise} {eta}",
+                "{msg} {wide_bar} {pos} {percent_precise}% {elapsed_precise} {eta}",
             )
             .unwrap(),
         );
-        let workers = (num_cpus::get() / 3) * 2;
+        let workers = num_cpus::get() / 3;
         let pool = ThreadPoolBuilder::new()
             .num_threads(workers)
             .build()
@@ -294,9 +320,18 @@ pub fn flight_inconsistency(opts: &env::Options) {
                                 continue;
                             }
                             let commits: env::Revisions = bincode::deserialize(&value[..]).unwrap();
-                            //call window_tz_inconsistency_extraction for each author
-                            // bar.set_message(format!("checking inconsistency for author {:?}", author));
+                            if commits.revisions.len() >= env::ALL_LIFE_OF_COMMITS {
+                                bar.inc(1);
+                                if let Ok(mut bots) = env::BOTS_SKIPPED.lock() {
+                                    bots.push((author, commits.metadata.name, commits.metadata.email));
+                                } else {
+                                    error!("Failed to acquire lock for BOTS_SKIPPED");
+                                }
+                                amount_bots_skipped.fetch_add(1, Ordering::Relaxed);
+                                continue;
+                            }
                             thread.spawn({
+                                let bar = &bar;
                                 let commits = commits.clone();
                                 let amount_flight_inconsistency = &amount_flight_inconsistency;
                                 let amount_author_parsed = &amount_author_parsed;
@@ -313,8 +348,9 @@ pub fn flight_inconsistency(opts: &env::Options) {
                                     )))
                                     .expect(
                                         format!(
-                                            "Failed sending the message for author: {}",
-                                            author
+                                            "Failed sending the message for author: {} at {}",
+                                            author,
+                                            bar.per_sec(),
                                         )
                                         .as_str(),
                                     );
@@ -332,8 +368,13 @@ pub fn flight_inconsistency(opts: &env::Options) {
                 }
             });
         });
-        bar.finish_and_clear();
-        write_error_time(results_path).expect("couldn't flush error messages");
+        bar.finish_with_message("Done");
+        write_error_time(&results_path).expect("couldn't flush error messages");
+        write_bots_skipped(&results_path).expect("couldn't flush bot list");
+        println!(
+            "Amount of bot skipped: {}",
+            amount_bots_skipped.load(Ordering::Relaxed)
+        );
         println!(
             "Amount of author parsed: {}",
             amount_author_parsed.load(Ordering::Relaxed)
@@ -388,14 +429,30 @@ pub fn flight_inconsistency(opts: &env::Options) {
         utils::create_cp(&opts.results, &mut cp);
     }
     println!("Amount of package not received: {}", recv_err.get_mut());
-
+    println!("Flight time elapsed: {:.2?}", start.elapsed());
     jh.join().unwrap();
 }
 
-pub fn write_error_time(results: String) -> std::io::Result<()> {
+pub fn write_error_time(results: &String) -> std::io::Result<()> {
     let error_times = env::ERROR_DATETIME.lock().unwrap();
     let path = format!("{}/logs/error_time.json", results);
     std::fs::write(path, serde_json::to_string(&*error_times).unwrap())?;
+    Ok(())
+}
+
+pub fn write_bots_skipped(results: &String) -> std::io::Result<()> {
+    let bots_skipped = env::BOTS_SKIPPED.lock().unwrap();
+    let path = format!("{}/logs/bots_skipped.csv", results);
+    
+    let mut wtr = csv::Writer::from_path(&path)?;
+
+    wtr.write_record(&["author", "name", "email"])?;
+
+    for (author, name, email) in bots_skipped.iter() {
+        wtr.write_record(&[author, name, email])?;
+    }
+    
+    wtr.flush()?;
     Ok(())
 }
 

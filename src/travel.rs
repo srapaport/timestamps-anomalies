@@ -46,7 +46,7 @@ pub fn travel_time(mut commits: Vec<(String, i64, i16, String)>) -> Vec<env::Fli
 
 pub fn flush_res(path_res: &str, res: &mut Vec<env::Flights>) {
     let author = res.first().unwrap().author.clone();
-    let filename = format!("{}/{}.json", path_res, author);
+    let filename = format!("{}/{}.csv", path_res, author);
 
     if let Ok(_) = fs::metadata(&filename) {
         warn!("travel.rs > flush_res | File {} already exists!", &filename);
@@ -64,11 +64,12 @@ pub fn flush_res(path_res: &str, res: &mut Vec<env::Flights>) {
         commit_b: String,
         timestamp_a: DateTime<Utc>,
         timestamp_b: DateTime<Utc>,
-        timezones: (i16, i16),
+        timezones: String,
     }
 
     res.iter().for_each(|flights| {
         flights.flights.iter().for_each(|flight| {
+            let timezones_str = format!("{},{}", flight.timezones.0, flight.timezones.1);
             writer
                 .serialize(Field {
                     author: flights.author.clone(),
@@ -78,7 +79,7 @@ pub fn flush_res(path_res: &str, res: &mut Vec<env::Flights>) {
                     commit_b: flight.commits.1.to_owned(),
                     timestamp_a: flight.timestamps.0,
                     timestamp_b: flight.timestamps.1,
-                    timezones: flight.timezones,
+                    timezones: timezones_str,
                 })
                 .unwrap();
         });

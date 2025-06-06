@@ -25,14 +25,14 @@ fn main(){
         window_range: timestamps_anomalies::env::ONE_DAY,
         chunk: 500,
     };
-    let commits = timestamps_anomalies::utils::single_author_commits(&opts, String::from("1b786cabdfc334c29e18c4477102640b096c907fae13a43e724396a67f2f753f")).unwrap();
+    /* let commits = timestamps_anomalies::utils::single_author_commits(&opts, String::from("cb95ced0e6d2f343e5d7b6f267c3c404ac4e04250ab01bfbd484b87433ad1db4")).unwrap();
     let first_commit = commits.first().unwrap().0.clone();
     let last_commit = commits.last().unwrap().0.clone();
     println!("id: {first_commit}");
-    println!("id: {last_commit}");
-    /* let author = String::from("313729713d6c8c87ffa7fa2b53743cbbabdf5b5e5b86a466e8c7b696fffd01ea");
-    let start_index = 2;
-    let end_index = 11;
+    println!("id: {last_commit}"); */
+    let author = String::from("cb95ced0e6d2f343e5d7b6f267c3c404ac4e04250ab01bfbd484b87433ad1db4");
+    let start_index = 2163;
+    let end_index = 2168;
     let mut cpt = start_index;
     timestamps_anomalies::utils::get_author_commits_range(&opts, author, start_index, end_index).unwrap()
         .into_iter()
@@ -40,6 +40,6 @@ fn main(){
             let date = DateTime::from_timestamp(commit.1, 0).unwrap();
             println!("index: {} | commit id : {} | time: {:?} {:?} | timezone: {}", cpt, commit.0, date.date_naive(), date.time(), commit.2);
             cpt += 1;
-        }); */
+        });
 
 }

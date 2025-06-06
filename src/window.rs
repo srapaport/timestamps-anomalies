@@ -4,7 +4,6 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use log::{error, warn};
 use serde::Serialize;
@@ -28,7 +27,7 @@ pub fn window_tz_inconsistency_extraction(
                 match DateTime::from_timestamp(commit.1, 0){
                     Some(dt)=>dt,
                     None => {
-                        error!("couldn't convert the following timestamp in DateTime: {}, from commit {}", commit.1, commit.0);
+                        warn!("couldn't convert the following timestamp in DateTime: {}, from commit {}", commit.1, commit.0);
                         if let Ok(mut guard) = env::ERROR_DATETIME.lock() {
                             guard.push((commit.0, commit.1));
                         } else {
@@ -42,26 +41,17 @@ pub fn window_tz_inconsistency_extraction(
             ))
         })
         .collect();
-    let bar = ProgressBar::new(refactored_commits.len() as u64);
-    bar.set_style(
-        ProgressStyle::with_template(
-            "{msg} {wide_bar} {pos} {percent_precise}% {elapsed_precise} {duration_precise} {eta}",
-        )
-        .unwrap(),
-    );
     let mut suspicious_pattern: Vec<env::Window> = Vec::new();
     let mut min_time = None;
     let mut min_offset = 0;
     for (i, first_commit) in refactored_commits.iter().enumerate() {
         if min_time.is_some_and(|time| first_commit.1 < time) {
-            bar.inc(1);
             continue;
         }
         if refactored_commits
             .get(i + 1)
             .is_some_and(|(_, _, tz, _)| first_commit.2 == *tz)
         {
-            bar.inc(1);
             continue;
         }
         let max_time = first_commit.1 + Duration::from_secs(window_range);
@@ -96,15 +86,13 @@ pub fn window_tz_inconsistency_extraction(
         } else {
             break;
         }
-        bar.inc(1);
     }
-    bar.finish_and_clear();
     suspicious_pattern
 }
 
 pub fn flush_res(path_res: &str, res: &mut Vec<env::Windows>) {
     let author = res.first().unwrap().author.clone();
-    let filename = format!("{}/{}.json", path_res, author);
+    let filename = format!("{}/{}.csv", path_res, author);
 
     if let Ok(_) = fs::metadata(&filename) {
         warn!("window.rs > flush_res | File {} already exists!", &filename);
@@ -113,6 +101,7 @@ pub fn flush_res(path_res: &str, res: &mut Vec<env::Windows>) {
 
     let mut writer = csv::Writer::from_path(&filename).unwrap();
     // writer.write_record(&["author", "name", "email", "start_index", "start_time", "end_index", "end_time", "timezones"]).unwrap();
+
 
     #[derive(Serialize)]
     struct Field {
@@ -123,11 +112,15 @@ pub fn flush_res(path_res: &str, res: &mut Vec<env::Windows>) {
         start_time: DateTime<Utc>,
         end_index: usize,
         end_time: DateTime<Utc>,
-        timezones: Vec<i16>,
+        timezones: String,
     }
 
     res.iter().for_each(|windows| {
         windows.windows.iter().for_each(|window| {
+            let timezones_str = window.timezones.iter()
+                .map(|tz| tz.to_string())
+                .collect::<Vec<String>>()
+                .join(",");
             writer
                 .serialize(Field {
                     author: windows.author.clone(),
@@ -137,7 +130,7 @@ pub fn flush_res(path_res: &str, res: &mut Vec<env::Windows>) {
                     start_time: window.start_time,
                     end_index: window.end_index,
                     end_time: window.end_time,
-                    timezones: window.timezones.clone(),
+                    timezones: timezones_str,
                 })
                 .unwrap();
         });
